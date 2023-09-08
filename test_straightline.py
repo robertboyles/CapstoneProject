@@ -13,7 +13,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.type_aliases import Schedule
 from read_track_data import TrackDataReader
 
-loadcheckpoint, from_log = True, False
+loadcheckpoint, from_log = False, False
 save_name = "sarc_easy_car"
 save_name = "./logs/" + save_name if from_log else save_name
 nepisodes = 300000
