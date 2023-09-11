@@ -1,13 +1,15 @@
 import numpy as np
 from scipy import interpolate as itp
 from RangeFinder import EulerIntegration as RangeFinder
+from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from Model_ABC import ModelABC
 
 
 class TrackDefinition(ModelABC):
-    def __init__(self, s, k, width=2.0, sf=None, t_limit=440.0) -> None:
-        self.k = itp.splrep(s, k)
+    def __init__(self, s, k, width=2.0, sf=None, t_limit=440.0, k_offset=0.0, k_error_scale=0.0) -> None:
+        
+        self.k = itp.splrep(s, (k+k_offset) + k_error_scale * k * k)
         self.W = lambda s : width
         
         self.sf = sf if sf is not None else s[-1]
@@ -73,8 +75,53 @@ class TrackDefinition(ModelABC):
         _, self.ind_dsdt = self.GetNamedValue('dsdt', self.getOutputNames())
     
     def K(self, s):
-        k = itp.splev(s, self.k)
+        k = itp.splev(s%self.sf, self.k)
         return k
+    
+    def dK(self, s):
+        dk = itp.splev(s%self.sf, self.k, der=1)
+        return dk
+    
+    def plot_track(self, step=1e-1, show=True):
+        theta = 0.0
+        x = 0.0
+        y = 0.0
+        
+        x0 = [theta, x, y]
+        
+        sol = solve_ivp(self.int_k_fun, (0.0, self.sf), x0, max_step=step)
+        
+        s = sol.t
+        theta, x, y = sol.y
+        
+        c_, s_ = lambda t : np.cos(t), lambda t :np.sin(t)
+        R_gr =  lambda t : np.array(((c_(t), -s_(t)), (s_(t), c_(t))))
+        
+        half_width = lambda s : self.W(s) / 2
+        xl, yl, xr, yr = [], [], [], []
+        for angle,xi,yi,si in zip(theta, x, y, s):
+            xl.append(xi + half_width(si) * -np.sin(angle))
+            yl.append(yi + half_width(si) * np.cos(angle))
+            xr.append(xi - half_width(si) * -np.sin(angle))
+            yr.append(yi - half_width(si) * np.cos(angle))
+        
+        if show:
+            plt.figure
+            plt.plot(x, y)
+            plt.plot(xl, yl)
+            plt.plot(xr, yr)
+            plt.axis('square')
+            plt.show()
+        return x,y,xl,yl,xr,yr
+        
+    def int_k_fun(self, s, y):
+        dx = np.zeros(len(y))
+        dx[0] = self.K(s)
+        dx[1] = np.cos(y[0])
+        dx[2] = np.sin(y[0])
+        return dx
+        
+        
     
     def getStateNames(self) -> tuple:
         return(
@@ -100,7 +147,7 @@ class TrackDefinition(ModelABC):
         return {
         }
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     print("Testing Track")
     n = 1000
     f = 0.03
@@ -112,6 +159,8 @@ if __name__ == "__main__":
     track = TrackDefinition(s, k)
     print(track.K(np.array([0, 1, 2, 3, 4, 5])))
     x0 = np.array([0, 0, 0, 0, 0, 0])
+    
+    track.plot_track()
     
     Vy = 0.0
     radius = 10.0

@@ -1,22 +1,26 @@
 import numpy as np
 from environment import Environment
 from bicyclemodel import BicycleModel
+from Wheel import Wheel, Rill as Tyre
 from FSFrame import TrackDefinition
 from read_track_data import TrackDataReader
 import matplotlib.pyplot as plt
 import time
 
 class AgentOutput():
-    def __init__(self, rBrakeThrottle, aHandWheel) -> None:
-        self.rBrakeThrottle = rBrakeThrottle
-        self.aHandWheel = aHandWheel
+    def __init__(self, drBrakeThrottle, daHandWheel) -> None:
+        self.drBrakeThrottle = drBrakeThrottle
+        self.daHandWheel = daHandWheel
 
 class PD():
-    rBrakeThrottle_max = 1
-    rBrakeThrottle_min = -1
+    drBrakeThrottle = 0.0
+    daHandWheel = 0.0
     
-    aHandWheel_max = 200 * (np.pi/180)
-    aHandWheel_min = -200 * (np.pi/180)
+    drBrakeThrottle_max = 4
+    drBrakeThrottle_min = -4
+    
+    daHandWheel_max = 400 * (np.pi/180)
+    daHandWheel_min = -400 * (np.pi/180)
     
     def __init__(self, 
                  vkp, vkd,
@@ -29,8 +33,6 @@ class PD():
         self.yawkp, self.yawkd = yawkp, yawkd
         
         self.h = updateRate
-        self.rBrakeThrottle = 1.0
-        self.aHandWheel = 0.0
         self.vErrorLast = 0.0
         self.yErrorLast = 0.0
         self.yawErrorLast = 0.0
@@ -52,13 +54,15 @@ class PD():
             
             daHandWheel = self.ykp * yError + dyError * self.ykd + self.yawkp * yawError + dyawError * self.yawkd
             
-            self.rBrakeThrottle += drBrakeThrottle
-            self.rBrakeThrottle = np.min([self.rBrakeThrottle_max, np.max([self.rBrakeThrottle_min, self.rBrakeThrottle])])
+            self.drBrakeThrottle = np.min([self.drBrakeThrottle_max, 
+                                     np.max([self.drBrakeThrottle_min, 
+                                             drBrakeThrottle])])
             
-            self.aHandWheel += daHandWheel
-            self.aHandWheel = np.min([self.aHandWheel_max, np.max([self.aHandWheel_min, self.aHandWheel])])
+            self.daHandWheel = np.min([self.daHandWheel_max, 
+                                  np.max([self.daHandWheel_min, 
+                                          daHandWheel])])
             
-        return AgentOutput(self.rBrakeThrottle, self.aHandWheel)
+        return AgentOutput(self.drBrakeThrottle, self.daHandWheel)
     
 if __name__ == "__main__":
     
@@ -66,26 +70,52 @@ if __name__ == "__main__":
     
     s = trackdata['s']
     k = trackdata['k']
-    v = trackdata['v'] * 0.8
+    v = trackdata['v'] * 0 + 20
+    k_offset = 1.5e-4 * 0
+    k_error_scale = 1.5
     sf = s[-1]
-
-    car : BicycleModel = BicycleModel()
-    car.X0 = np.array([v[0],0,0,v[0]/0.3,v[0]/0.3,0,0.025])
-    car.powertrain.MDrive_ref *= 2.0
-    car.brakesystem.MBrake_ref *= 2.0
-    car.wheelf.Izz *= 3
-    car.wheelr.Izz *= 3
     
-    track : TrackDefinition = TrackDefinition(s, k)
+    chassis_params = {
+            'mass': 500,
+            'Izz' : 2000,
+            'lf' : 1.5,
+            'lr' : 1.5,
+            'steering_ratio': -12.0 # aHandWheel/aSteer
+        }
+
+    tyre_params = {
+                'FzN':4000,     'Fz2N':8000, 
+                'dF0xN':200000, 'dF0x2N':210000,
+                'dF0yN':50000,  'dF0y2N':55000,
+                'sMxN':0.1,     'sMx2N':0.15,
+                'sMyN':0.2,     'sMy2N':0.21,
+                'FMxN':10000,   'FMx2N':30000,
+                'FMyN':6000,   'FMy2N':7000,
+                'xComb' :0.01,   'yComb':0.01}
+
+    tyrecommon = Tyre(
+        parameters=tyre_params, rRolling=0.3
+    )
+        
+    wheelf = Wheel(Izz=1.5, tyre=tyrecommon)
+    wheelr = Wheel(Izz=1.5, tyre=tyrecommon)
+
+    car : BicycleModel = BicycleModel(parameters=chassis_params, wheelf_overload=wheelf, wheelr_overload=wheelr)
+    car.powertrain.MDrive_ref = 200.0
+    car.X0 = np.array([30,0,0,30/0.3,30/0.3,0,0.0001,0,0,0.2,0])
+        
+    track : TrackDefinition = TrackDefinition(s, k, width=5, k_offset=k_offset, k_error_scale=k_error_scale)
+    
+    x,y,xl,yl,xr,yr = track.plot_track(step=1, show=False)
     
     env : Environment = Environment(vehicleModel=car, track=track, 
-                                    fixed_update=20.0)
+                                    fixed_update=10.0)
     
     controller = PD(
         vkp=-0.01, vkd=-0.2,
-        ykp=0.002, ykd=0.1,
-        yawkp=0.001, yawkd=10,
-        updateRate=1/5.0
+        ykp=0, ykd=10,
+        yawkp=0.01, yawkd=100,
+        updateRate=1/10.0
     )
     
     _, ind_ephi = env.GetStateValue('ephi')
@@ -114,20 +144,20 @@ if __name__ == "__main__":
         
         if disp_cnt % period_disp == 0:
             print("aHandWheel = %f\trThrottle = %f\t time = %f\t v = %f\t s = %f" % (
-                pid_output.aHandWheel*180/np.pi, 
-                pid_output.rBrakeThrottle, 
+                pid_output.daHandWheel*180/np.pi, 
+                pid_output.drBrakeThrottle, 
                 t, vmag, slap))
         disp_cnt += 1
         
         env.step(
-            rBrakeThrottle=pid_output.rBrakeThrottle, 
-            aHandWheel=pid_output.aHandWheel)
+            drBrakeThrottle=pid_output.drBrakeThrottle, 
+            daHandWheel=pid_output.daHandWheel)
         
         slap = state[ind_s]
     end_time = time.time()
     print("Timing = %f" % (end_time - start_time))    
-    rBrakeThrottle = env.GetActionTrajectory('rBrakeThrottle')
-    aHandWheel = env.GetActionTrajectory('aHandWheel')
+    rBrakeThrottle = env.GetStateTrajectory('rBrakeThrottle')
+    aHandWheel = env.GetStateTrajectory('aHandWheel')
     t = env.GetTime()
     sLap = env.GetStateTrajectory('s')
     
@@ -141,6 +171,7 @@ if __name__ == "__main__":
     plt.plot(s, v, color='red', linewidth=0.5)
     plt.subplot(2,2,2)
     plt.plot(env.GetStateTrajectory('x_global'), env.GetStateTrajectory('y_global'))
+    plt.axis('square')
     plt.subplot(2,2,3)
     plt.plot(independentvar, rBrakeThrottle)
     plt.subplot(2,2,4)
@@ -148,30 +179,37 @@ if __name__ == "__main__":
     
     plt.figure()
     plt.subplot(2,2,1)
-    plt.plot(independentvar, env.GetOutputTrajectory('gLat'))
+    plt.plot(independentvar, env.GetOutputTrajectory('ay'))
+    plt.title('ay')
     plt.subplot(2,2,2)
-    plt.plot(independentvar, env.GetOutputTrajectory('gLong'))
+    plt.plot(independentvar, env.GetOutputTrajectory('ax'))
+    plt.title('ax')
     plt.subplot(2,2,3)
-    plt.plot(independentvar, env.GetOutputTrajectory('Fyf'))
+    plt.plot(independentvar, env.GetStateTrajectory('ephi'))
+    plt.title('ephi')
     plt.subplot(2,2,4)
-    plt.plot(independentvar, env.GetOutputTrajectory('Fxr'))
-    
-    plt.figure()
-    plt.subplot(3,1,1)
-    plt.plot(independentvar, env.GetStateTrajectory('nYaw'))
-    plt.subplot(3,1,2)
-    plt.plot(independentvar, env.GetOutputTrajectory('Fyf'))
-    plt.subplot(3,1,3)
-    plt.plot(independentvar, env.GetOutputTrajectory('wheel_f_Fy'))
+    plt.plot(independentvar, env.GetStateTrajectory('ey'))
+    plt.title('ey')    
     
     plt.figure()
     plt.subplot(2,2,1)
-    plt.plot(independentvar, env.GetOutputTrajectory('alphaF') * 180/np.pi)
+    plt.plot(env.GetOutputTrajectory('alphaF'), env.GetOutputTrajectory('wheel_f_Fy'), marker='*', linestyle="None")
+    plt.title('Front Lat.')
     plt.subplot(2,2,2)
-    plt.plot(independentvar, env.GetOutputTrajectory('kappaF'))
+    plt.plot(env.GetOutputTrajectory('alphaR'), env.GetOutputTrajectory('wheel_r_Fy'), marker='*', linestyle="None")
+    plt.title('Rear Lat.')
     plt.subplot(2,2,3)
-    plt.plot(independentvar, env.GetOutputTrajectory('alphaR') * 180/np.pi)
+    plt.plot(env.GetOutputTrajectory('kappaF'), env.GetOutputTrajectory('wheel_f_Fx'), marker='*', linestyle="None")
+    plt.title('Front Long.')
     plt.subplot(2,2,4)
-    plt.plot(independentvar, env.GetOutputTrajectory('kappaR'))
+    plt.plot(env.GetOutputTrajectory('kappaR'), env.GetOutputTrajectory('wheel_r_Fx'), marker='*', linestyle="None")
+    plt.title('Rear Long.')
     
+    plt.figure()
+    plt.plot(env.GetStateTrajectory('x_global'), env.GetStateTrajectory('y_global'),
+             linewidth=2.0)
+    plt.plot(x, y, color='black', linewidth=0.5)
+    plt.plot(xl, yl, color='red', linewidth=0.5)
+    plt.plot(xr, yr, color='red', linewidth=0.5)
+    plt.axis('square')
     plt.show()
