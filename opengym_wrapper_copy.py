@@ -13,9 +13,7 @@ import matplotlib.pyplot as plt
 class EnvironmentGym(gym.Env):
     scale_progress_term, progress_period = 10.0, 1/5
     scale_boundary_term = -20.0
-    steps_count = 0
     pdf_interval = 2000
-    print_next_terminal = False
         
     def __init__(self, model:Environment) -> None:
         # drBrakeThrottle, daHandWheel
@@ -57,6 +55,9 @@ class EnvironmentGym(gym.Env):
         self.render_mode = None
         self.model : Environment = model
         self.max_handwheel = 200.0 * np.pi/180
+
+        self.print_next_terminal = False
+        self.steps_count = 0
     
     def _reward(self, action
     ) -> float:
@@ -71,6 +72,8 @@ class EnvironmentGym(gym.Env):
         dsdt, _ = self.model.GetOutputValue('dsdt')
         kappaf, _ = self.model.GetStateValue('kappaF')
         kappar, _ = self.model.GetStateValue('kappaR')
+        rBrakeThrottle, _ = self.model.GetStateValue('rBrakeThrottle')
+        aHandwheel, _ = self.model.GetStateValue('aHandWheel')
         
         drBrakeThrottle = action[0]
         daHandWheel = action[1]
@@ -83,11 +86,13 @@ class EnvironmentGym(gym.Env):
         to_slow_pen = 100 * np.tanh(0.4 * dsdt + 2) - 99.1445
         to_slow_deprecated = 10 * np.clip(dsdt, -100, 0)
         slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
+        combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.max_handwheel)
          
         reward = (progress * (1 - bout_of_bounds) + boundary
                   + slip_pen_fun(kappaf) / 500
                   + slip_pen_fun(kappar) / 500
                   + to_slow_pen 
+                  - combined_pen
                   - 1e-2 * drBrakeThrottle * drBrakeThrottle 
                   - 1e-2 * daHandWheel * daHandWheel)
         reward = reward / 100.0 # help critic loss remain within a sensible range
@@ -169,7 +174,7 @@ class EnvironmentGym(gym.Env):
                  self.model.GetStateTrajectory('vx') * self.model.GetStateTrajectory('vx') +
                  self.model.GetStateTrajectory('vy') * self.model.GetStateTrajectory('vy')))
         plt.title('dsdt')
-        plt.savefig(self.steps_count.__str__() + '_SAC_Controls.pdf')
+        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_Controls.pdf')
 
         plt.close()
         plt.figure()
@@ -181,7 +186,7 @@ class EnvironmentGym(gym.Env):
         plt.title('Velocity Profile')
         plt.xlabel('sLap [m]')
         plt.ylabel('vPath [kph]')
-        plt.savefig(self.steps_count.__str__() + '_SAC_PathTaken.pdf')
+        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_PathTaken.pdf')
 
         plt.close()
         plt.figure()
@@ -197,7 +202,7 @@ class EnvironmentGym(gym.Env):
         plt.subplot(2,2,4)
         plt.plot(self.model.GetOutputTrajectory('kappaR'), self.model.GetOutputTrajectory('wheel_r_Fx'), marker='*', linestyle="None")
         plt.title('Rear Long.')
-        plt.savefig(self.steps_count.__str__() + '_SAC_TyreLoads.pdf')
+        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_TyreLoads.pdf')
 
         plt.close()
         plt.figure()
@@ -212,9 +217,9 @@ class EnvironmentGym(gym.Env):
                  self.model.GetOutputTrajectory('Mr'))
         plt.title('Moments Balance CoG (MF + MR)')
         plt.subplot(2,2,4)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('wheel_r_vy'))
-        plt.title('Wheel Rear vy')
-        plt.savefig(self.steps_count.__str__()  + '_SAC_YawDynamics.pdf')
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('alphaF') - self.model.GetOutputTrajectory('alphaR'))
+        plt.title('Simple UnderSteer')
+        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_YawDynamics.pdf')
 
         plt.close()
         plt.figure()
@@ -240,7 +245,7 @@ class EnvironmentGym(gym.Env):
         plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('axle_f_wr'))
         plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('axle_r_wr'))
         plt.title('wr axle')
-        plt.savefig(self.steps_count.__str__()  + '_SAC_RotationMatrix.pdf')
+        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_RotationMatrix.pdf')
         return
     
     def step(self, action: np.array
@@ -248,7 +253,7 @@ class EnvironmentGym(gym.Env):
         self.steps_count += 1
 
         # action[1]*self.max_handwheel*0
-        self.model.step(action[0], action[1]*self.max_handwheel)
+        self.model.step(action[0], action[1]*self.max_handwheel) # this is wrong... may effect the log probs? may not be an issue either
         
         s, _ = self.model.GetStateValue('s')
         ey, _ = self.model.GetStateValue('ey')

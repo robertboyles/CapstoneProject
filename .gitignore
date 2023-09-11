@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 tfb/
 logs/
+plots/
 
 # C extensions
 *.so
