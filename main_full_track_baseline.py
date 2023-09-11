@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import time
 from Wheel import Wheel, Rill as Tyre
-from opengym_wrapper_copy import EnvironmentGym
+from opengym_wrapper import EnvironmentGym
 from environment import Environment
 from bicyclemodel import BicycleModel
 from FSFrame import TrackDefinition
@@ -14,8 +14,8 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.type_aliases import Schedule
 from read_track_data import TrackDataReader
 
-loadcheckpoint, from_log = True, True
-save_name = "sarc_easy_car_3390000_steps"
+loadcheckpoint, from_log = False, False
+save_name = "sac_full_lap_test_easyCar"
 save_name = "./logs/" + save_name if from_log else save_name
 nepisodes = 5000000
 
