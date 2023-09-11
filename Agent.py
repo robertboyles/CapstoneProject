@@ -15,18 +15,13 @@ class AgentOutput():
 class PD():
     drBrakeThrottle = 0.0
     daHandWheel = 0.0
-    
-    drBrakeThrottle_max = 4
-    drBrakeThrottle_min = -4
-    
-    daHandWheel_max = 400 * (np.pi/180)
-    daHandWheel_min = -400 * (np.pi/180)
-    
+        
     def __init__(self, 
                  vkp, vkd,
                  ykp, ykd,
                  yawkp, yawkd, 
-                 updateRate=1/5) -> None:
+                 updateRate=1/5, 
+                 drBrakeThrottle_max=4, daHandWheel_max=400*np.pi/180.0) -> None:
         
         self.vkp, self.vkd = vkp, vkd
         self.ykp, self.ykd = ykp, ykd
@@ -37,6 +32,12 @@ class PD():
         self.yErrorLast = 0.0
         self.yawErrorLast = 0.0
         self.last_t = 0.0
+        
+        self.drBrakeThrottle_max = drBrakeThrottle_max
+        self.drBrakeThrottle_min = -drBrakeThrottle_max
+    
+        self.daHandWheel_max = daHandWheel_max
+        self.daHandWheel_min = -daHandWheel_max
     
     def output(self, vError, yError, yawError, t) -> AgentOutput:
         
@@ -80,7 +81,8 @@ if __name__ == "__main__":
             'Izz' : 2000,
             'lf' : 1.5,
             'lr' : 1.5,
-            'steering_ratio': -12.0 # aHandWheel/aSteer
+            'steering_ratio': -12.0, # aHandWheel/aSteer
+            'max_aHandWheel': 200 * np.pi/180.0
         }
 
     tyre_params = {
@@ -106,7 +108,7 @@ if __name__ == "__main__":
         
     track : TrackDefinition = TrackDefinition(s, k, width=5, k_offset=k_offset, k_error_scale=k_error_scale)
     
-    x,y,xl,yl,xr,yr = track.plot_track(step=1, show=False)
+    x,y,xl,yl,xr,yr = track.plot_track(step=1, show=True)
     
     env : Environment = Environment(vehicleModel=car, track=track, 
                                     fixed_update=10.0)
@@ -115,7 +117,8 @@ if __name__ == "__main__":
         vkp=-0.01, vkd=-0.2,
         ykp=0, ykd=10,
         yawkp=0.01, yawkd=100,
-        updateRate=1/10.0
+        updateRate=1/10.0,
+        drBrakeThrottle_max=4, daHandWheel_max=400 * np.pi/180.0
     )
     
     _, ind_ephi = env.GetStateValue('ephi')
@@ -149,9 +152,13 @@ if __name__ == "__main__":
                 t, vmag, slap))
         disp_cnt += 1
         
+        drBrakeThrottle_scaled, daHandWheel_scaled = env.scale_actions(
+            pid_output.drBrakeThrottle, pid_output.daHandWheel, inverse=True
+        )
+        
         env.step(
-            drBrakeThrottle=pid_output.drBrakeThrottle, 
-            daHandWheel=pid_output.daHandWheel)
+            drBrakeThrottle_scaled=drBrakeThrottle_scaled, 
+            daHandWheel_scaled=daHandWheel_scaled)
         
         slap = state[ind_s]
     end_time = time.time()

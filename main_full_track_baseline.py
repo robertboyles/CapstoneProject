@@ -28,7 +28,7 @@ trackdata = TrackDataReader().load_example_data()
 s = trackdata['s']
 k = trackdata['k']
 
-track : TrackDefinition = TrackDefinition(s, k, width=2.0)
+track : TrackDefinition = TrackDefinition(s, k, width=2.0, k_error_scale=1.5)
 track.X0 = np.array([0, 0, 0, 0, 0, 0])
 
 chassis_params = {
@@ -36,7 +36,8 @@ chassis_params = {
             'Izz' : 2000,
             'lf' : 1.5,
             'lr' : 1.5,
-            'steering_ratio': -12.0 # aHandWheel/aSteer
+            'steering_ratio': -12.0, # aHandWheel/aSteer
+            'max_aHandWheel': 200 * np.pi/180.0
         }
 
 tyref_params = {

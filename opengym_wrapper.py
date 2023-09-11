@@ -18,28 +18,9 @@ class EnvironmentGym(gym.Env):
     def __init__(self, model:Environment) -> None:
         # drBrakeThrottle, daHandWheel
         self.action_space = gym.spaces.Box(
-            np.array([-4, -400*np.pi/180]).astype(np.float32),
-            np.array([+4,  400*np.pi/180]).astype(np.float32))
+            np.array([-1, -1]).astype(np.float32),
+            np.array([+1, +1]).astype(np.float32))
         
-        # self.action_space = gym.spaces.Box(
-        #     np.array([-4]).astype(np.float32),
-        #     np.array([+4]).astype(np.float32))
-        
-        '''
-        From Fuchs, they use: s_t = {v, v_dot, theta, range_finders, 
-                                    bwall_contact, delta_prev, curvature_array
-        }
-        '''
-        
-        # vx, vy, vdotx, vdoty, yError, yawError, range0-4, K+5m, K+20m
-        # self.observation_space = gym.spaces.Box(
-        #     np.array([10,  10, -100, -40, -1000.0, -2*np.pi, 0,   0,   0,   0,   0,   -0.1, -0.1]).astype(np.float32),
-        #     np.array([100, 100, 100,   40, 1000.0,  2*np.pi,  100 ,100 ,100 ,100 ,100,  0.1,  0.1]).astype(np.float32)
-        # )
-
-        # Maybe include distance to goal?
-        # Include a large bonus for reaching the goal state! Otherwise it may try to extend the episode to collect more reward
-
         nk = 10
         curve_max = np.ones([nk]) * 0.1
         curve_min = np.ones([nk]) * -0.1
@@ -54,7 +35,6 @@ class EnvironmentGym(gym.Env):
         
         self.render_mode = None
         self.model : Environment = model
-        self.max_handwheel = 200.0 * np.pi/180
 
         self.print_next_terminal = False
         self.steps_count = 0
@@ -75,10 +55,9 @@ class EnvironmentGym(gym.Env):
         rBrakeThrottle, _ = self.model.GetStateValue('rBrakeThrottle')
         aHandwheel, _ = self.model.GetStateValue('aHandWheel')
         
-        drBrakeThrottle = action[0]
-        daHandWheel = action[1]
+        drBrakeThrottle, daHandWheel = self.__scale_actions__(action)
 
-        lout_of_bounds = np.abs(yError) - width
+        lout_of_bounds = np.abs(yError) - (width/2)
         bout_of_bounds = lout_of_bounds > 0.0
 
         max_dsdt = 100
@@ -86,7 +65,7 @@ class EnvironmentGym(gym.Env):
         to_slow_pen = 100 * np.tanh(0.4 * dsdt + 2) - 99.1445
         to_slow_deprecated = 10 * np.clip(dsdt, -100, 0)
         slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
-        combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.max_handwheel)
+        combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.model.car.max_ahandwheel)
          
         reward = (progress * (1 - bout_of_bounds) + boundary
                   + slip_pen_fun(kappaf) / 500
@@ -149,8 +128,14 @@ class EnvironmentGym(gym.Env):
         scaled = (2 * ((raw - obs_low) / (obs_high - obs_low))) - 1.0
         
         return scaled
+    
+    def __scale_actions__(self, actions):
+        a0, a1 = self.model.scale_actions(actions[0], actions[1])
+        return np.array([a0, a1])
         
     def render(self, mode) -> None:
+        x, y, xl, yl, xr, yr = self.model.track.plot_track(show=False)
+        
         plt.close()
         plt.ioff()
         plt.figure()
@@ -158,7 +143,7 @@ class EnvironmentGym(gym.Env):
         plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('drBrakeThrottle'))
         plt.title('drBrakeThrottle')
         plt.subplot(2,3,2)
-        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('daHandWheel'))
+        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('daHandWheel') * 180/np.pi)
         plt.title('daHandwheel')
         plt.subplot(2,3,4)
         plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('rBrakeThrottle'))
@@ -206,64 +191,23 @@ class EnvironmentGym(gym.Env):
 
         plt.close()
         plt.figure()
-        plt.subplot(2,2,1)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('nYaw') * 180/np.pi)
-        plt.title('nYaw.')
-        plt.subplot(2,2,2)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('wheel_f_vy'))
-        plt.title('Wheel Front vy')
-        plt.subplot(2,2,3)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('Mf') + 
-                 self.model.GetOutputTrajectory('Mr'))
-        plt.title('Moments Balance CoG (MF + MR)')
-        plt.subplot(2,2,4)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('alphaF') - self.model.GetOutputTrajectory('alphaR'))
-        plt.title('Simple UnderSteer')
-        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_YawDynamics.pdf')
-
-        plt.close()
-        plt.figure()
-        plt.subplot(3,2,1)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('vx'))
-        plt.title('vx_cog')
-        plt.subplot(3,2,2)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('vy'))
-        plt.title('vy_cog')
-        plt.subplot(3,2,3)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('aSteer'))
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('aHandWheel'))
-        plt.title('aSteer Wheel (delta)')
-        plt.subplot(3,2,4)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('wheel_f_vy'))
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('vy'))
-        plt.title('vy_wheelf')
-        plt.subplot(3,2,6)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('wheel_r_vy'))
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetStateTrajectory('vy'))
-        plt.title('vy_wheelr')
-        plt.subplot(3,2,5)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('axle_f_wr'))
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('axle_r_wr'))
-        plt.title('wr axle')
-        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_RotationMatrix.pdf')
+        plt.plot(self.model.GetStateTrajectory('x_global'), self.model.GetStateTrajectory('y_global'),
+             linewidth=0.1)
+        plt.plot(xl, yl, color='red', linewidth=0.1)
+        plt.plot(xr, yr, color='red', linewidth=0.1)
+        plt.axis('square')
+        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_RacingLine.pdf')
         return
     
     def step(self, action: np.array
              ):
         self.steps_count += 1
 
-        # action[1]*self.max_handwheel*0
-        self.model.step(action[0], action[1]*self.max_handwheel) # this is wrong... may effect the log probs? may not be an issue either
+        self.model.step(action[0], action[1])
         
         s, _ = self.model.GetStateValue('s')
-        ey, _ = self.model.GetStateValue('ey')
-        #vx, _ = self.model.GetStateValue('vx')
-        #vy, _ = self.model.GetStateValue('vy')
-        
-        width, _ = self.model.GetOutputValue('width')
+        ey, _ = self.model.GetStateValue('ey')        
         dsdt, _ = self.model.GetOutputValue('dsdt')
-        
-        #print(s, dsdt, ey)
         
         terminated = s > self.model.sfinal
         truncated = (np.abs(ey) > 5.0 or # (10.0 * width * 0.5)  ## This fixed value of 5 helps keep ey*ey*ey*ey in rewards low, otherwise wider tracks cause convergence issues
@@ -283,8 +227,6 @@ class EnvironmentGym(gym.Env):
             self.render(None)
             self.print_next_terminal = False
 
-        #print(terminated, s, self.model.sfinal)
-        #controls_pen = 1e-4 * (action[0] * action[0] + 10000 * action[1] * action[1])
         return self._state(), self._reward(action), terminated or truncated, info_dict
     
     def reset(self, *, seed= None, options= None

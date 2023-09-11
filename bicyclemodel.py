@@ -43,6 +43,8 @@ class BicycleModel(ModelABC):
         
         if wheelr_overload is not None:
             self.wheelr = wheelr_overload
+        
+        self.max_ahandwheel = self.parameters['max_aHandWheel']
 
         self.initialise_references()
     
@@ -58,11 +60,12 @@ class BicycleModel(ModelABC):
         lr = p['lr']
         mass = p['mass']
         Izz = p['Izz']
+        max_aHandWheel = p['max_aHandWheel']
         
         # Assign inputs
         rThrottleBrake = np.clip(x[self.ind_rBrakeThrottle], -1, 1)
         aHandWheel = np.clip(x[self.ind_aHandWheel], 
-                             -200*np.pi/180, 200*np.pi/180)
+                             -max_aHandWheel, max_aHandWheel)
         aSteer = aHandWheel * (1/steering_ratio)
         h = u[self.ind_h]
         
@@ -116,16 +119,17 @@ class BicycleModel(ModelABC):
         drBrakeThrottleRequest = u[self.ind_drBrakeThrottle]
         daHandWheelRequest = u[self.ind_daHandWheel]
         
-        if rThrottleBrake < -0.999 and drBrakeThrottleRequest < 0.0:
+        eps = 1e-3
+        if rThrottleBrake < -1+eps and drBrakeThrottleRequest < 0.0:
             drBrakeThrottle = 0.0
-        elif rThrottleBrake > 0.999 and drBrakeThrottleRequest > 0.0:
+        elif rThrottleBrake > 1-eps and drBrakeThrottleRequest > 0.0:
             drBrakeThrottle = 0.0
         else:
             drBrakeThrottle = drBrakeThrottleRequest
         
-        if aHandWheel < -199.999*np.pi/180 and daHandWheelRequest < 0.0:
+        if aHandWheel < -max_aHandWheel+eps and daHandWheelRequest < 0.0:
             daHandWheel = 0.0
-        elif aHandWheel > 199.999*np.pi/180 and daHandWheelRequest > 0.0:
+        elif aHandWheel > max_aHandWheel-eps and daHandWheelRequest > 0.0:
             daHandWheel = 0.0
         else:
             daHandWheel = daHandWheelRequest
@@ -252,7 +256,8 @@ class BicycleModel(ModelABC):
             'Izz' : 1200,
             'lf' : 1.5,
             'lr' : 1.5,
-            'steering_ratio': -12.0 # aHandWheel/aSteer
+            'steering_ratio': -12.0, # aHandWheel/aSteer
+            'max_aHandWheel': 200 * np.pi/180.0
         }
 
 if __name__ == "__main__":

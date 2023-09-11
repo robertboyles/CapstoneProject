@@ -6,6 +6,8 @@ from scipy.integrate import Radau as integrator
 
 class Environment():
     h0 = 1e-6
+    scale_drBrakeThrottle = 4.0
+    scale_daHandWheel = 400 * np.pi/180.0
 
     @property
     def h(self) -> float:
@@ -101,7 +103,7 @@ class Environment():
         self.ode_fun(0.0, self.X)
         
     def  ode_fun(self, t, y):
-            u = self.current_actions if self.current_actions is not None else np.ones(2)
+            u = self.current_actions if self.current_actions is not None else np.zeros(2)
 
             h = self.h
             
@@ -131,7 +133,26 @@ class Environment():
             
             return dy
     
-    def step(self, drBrakeThrottle, daHandWheel):
+    def scale_actions(self, drBrakeThrottle_scaled, daHandWheel_scaled, inverse=False):
+        if not inverse:
+            scale_brakethrottle = self.scale_drBrakeThrottle
+            scale_handwheel = self.scale_daHandWheel
+        else:
+            scale_brakethrottle = 1 / self.scale_drBrakeThrottle
+            scale_handwheel = 1 / self.scale_daHandWheel
+        
+        drBrakeThrottle = drBrakeThrottle_scaled * scale_brakethrottle
+        daHandWheel = daHandWheel_scaled * scale_handwheel
+            
+        return drBrakeThrottle, daHandWheel
+        
+    
+    def step(self, drBrakeThrottle_scaled, daHandWheel_scaled):
+        
+        # Scale normalised network outputs to correct 
+        drBrakeThrottle, daHandWheel = self.scale_actions(
+            drBrakeThrottle_scaled, daHandWheel_scaled
+        )
         
         self.current_actions = np.array([drBrakeThrottle, daHandWheel])
         
