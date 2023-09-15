@@ -11,16 +11,8 @@ class BicycleModel(ModelABC):
     '''
     Vehicle sub models
     '''
-    aero : SimpleAero = SimpleAero(Clf=2.0, Clr=2.0, Cd=1.0)
-    # wheelf : Wheel = Wheel(
-    #                         Izz=1.38,
-    #                         tyre=Tyre(Calpha=-77000, Cs=200000, rRolling=0.3)
-    #                         )
-    # wheelr : Wheel = Wheel(
-    #                         Izz=1.48,
-    #                         tyre=Tyre(Calpha=-77000, Cs=200000, rRolling=0.3)
-    #                         )
-    
+    aero : SimpleAero = SimpleAero(Clf=1.75, Clr=2.1, Cd=0.9)
+
     wheelf : Wheel = Wheel(
                             Izz=1.38,
                             tyre=Tyre(rRolling=0.3)
@@ -30,9 +22,9 @@ class BicycleModel(ModelABC):
                             tyre=Tyre(rRolling=0.3)
                             )
     
-    brakesystem : SimpleBrake = SimpleBrake(rBB=0.5, MBrake_ref=4000) 
+    brakesystem : SimpleBrake = SimpleBrake(rBB=0.63, MBrake_ref=11000) 
     
-    powertrain : SimpleDirectDrive = SimpleDirectDrive(600)
+    powertrain : SimpleDirectDrive = SimpleDirectDrive(5000) # torque is g-box out so half at wheel model
     
     def __init__(self, parameters:dict=None, 
                  wheelf_overload=None, wheelr_overload=None) -> None:
@@ -98,7 +90,7 @@ class BicycleModel(ModelABC):
         
         kappaR = np.clip(kappaR, -1.0, 1.0)
         wheelr_out : WheelOutputs = self.wheelr.Evaluate(
-            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear, driveshaft.MDriveshaft, mass, h
+            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear, driveshaft.MDriveshaft / 2.0, mass, h
         )
         
         # Evaluate vehicle model

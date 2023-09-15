@@ -13,8 +13,8 @@ from custom_callbacks import callbackset
 from BaselineModels import GetBaseCar, GetBaseTrack
 import os
 
-# Task Definitions
-save_name = "raw_reward_relax_more_power"
+bStraightline_overload = False
+save_name = "test_corner_again"
 
 nepisodes = 1000000
 
@@ -26,17 +26,23 @@ log_save_path = './logs/' + save_name
 log_params_freq = 10000
 
 eval_save_path = './evaluations/' + save_name
-eval_steps_freq = 2000
+eval_steps_freq = 20000
 
 
 best_save_path = './best_models/' + save_name
 
 learning_path = './plots/' + save_name
-pdf_interval = 3000
+pdf_interval = 1000
 
 
 trackdata = TrackDataReader.readCSV("./data/old_T10.csv")
 reward_fun = path_following
+
+if bStraightline_overload:
+    # Straight-line overload
+    s = np.linspace(0, 1000, 1000)
+    k = np.zeros(s.shape)
+    trackdata = {'s': s, 'k': k}
 
 # Track data
 track : TrackDefinition = GetBaseTrack(trackdata)

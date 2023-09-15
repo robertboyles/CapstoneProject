@@ -88,21 +88,22 @@ def path_finding(self, action
 
     boundary = -10000 * lout_of_bounds * lout_of_bounds if lout_of_bounds > 0.0 else 0.0
     to_slow_pen = 100 * np.tanh(0.4 * dsdt + 2) - 99.1445
-    slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
+#     slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
+    slip_pen_fun = lambda slip : -100 * (np.abs(slip) - 0.1) * (np.abs(slip) - 0.1) - 9 * (np.abs(slip) - 0.1) + + 0.15 if (np.abs(slip) - 0.1) > 0.0 else 0.0
     combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.model.car.max_ahandwheel)
         
     reward = (progress * (1 - bout_of_bounds) 
                 + boundary
-                #+ slip_pen_fun(kappaf) / 500
-                #+ slip_pen_fun(kappar) / 500
+                + slip_pen_fun(kappaf) / 500
+                + slip_pen_fun(kappar) / 500
                 + to_slow_pen 
-                #- combined_pen
+                - combined_pen
                 - 1e-2 * drBrakeThrottle * drBrakeThrottle 
                 - 1e-2 * daHandWheel * daHandWheel)
     reward = reward / 100.0 # help critic loss remain within a sensible range
 
-    if new_slap >= self.model.sfinal:
-        reward += 50
+#     if new_slap >= self.model.sfinal:
+#         reward += (500 * dsdt)
 
     return reward
 
@@ -139,7 +140,8 @@ def path_following(self, action
 
     boundary = -(0.5 + (0.25 * np.tanh(lout_of_bounds))) * yError * yError * yError * yError
     to_slow_pen = 100 * np.tanh(0.4 * dsdt + 2) - 99.1445
-    slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
+    # slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
+    slip_pen_fun = lambda slip : -100 * (np.abs(slip) - 0.1) * (np.abs(slip) - 0.1) - 9 * (np.abs(slip) - 0.1) + + 0.15 if (np.abs(slip) - 0.1) > 0.0 else 0.0
     combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.model.car.max_ahandwheel)
         
     reward = (progress * (1 - bout_of_bounds) 
@@ -152,7 +154,7 @@ def path_following(self, action
                 - 1e-2 * daHandWheel * daHandWheel)
     reward = reward / 100.0 # help critic loss remain within a sensible range
 
-    if new_slap >= self.model.sfinal:
-        reward += 50
+#     if new_slap >= self.model.sfinal:
+#         reward += (500 * dsdt)
 
     return reward

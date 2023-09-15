@@ -138,8 +138,8 @@ class Wheel():
     
     def __bc__(self, omega, slip, tanalpha, vxhub, vyhub):
         R = self.tyre.rRolling
-        B = 0.3
-        b = 0.3
+        B = 1 # this is too slow
+        b = 0.3 # this is too fast 
         sgn = np.sign(vxhub)
         if sgn == 0:
             sgn = 1
