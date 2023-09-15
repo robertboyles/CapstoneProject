@@ -7,7 +7,7 @@ class AeroOutputs():
         self.Fdrag = Fdrag
         
 class Aero():
-    def __init__(self, A=1, rho=1.2) -> None:
+    def __init__(self, A=1.4, rho=1.2) -> None:
         self.A = A
         self.rho = rho
     def GetAeroForce(self, vx, vy) -> AeroOutputs:

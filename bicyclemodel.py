@@ -3,14 +3,14 @@ from Aero import SimpleAero
 from Wheel import Wheel, WheelOutputs
 from Wheel import Rill as Tyre
 from BrakingSystem import SimpleBrake, BrakingSystemOutput
-from Powertrain import SimpleDirectDrive, Powertrain_Outputs
+from Powertrain import OptimalPower, Powertrain_Outputs
 from Model_ABC import ModelABC
 
 class BicycleModel(ModelABC):        
     '''
     Vehicle sub models
     '''
-    aero : SimpleAero = SimpleAero(Clf=1.75, Clr=2.1, Cd=0.9)
+    aero : SimpleAero = SimpleAero(Clf=1.75, Clr=2.1, Cd=1.2)
 
     wheelf : Wheel = Wheel(
                             Izz=1.38,
@@ -23,7 +23,7 @@ class BicycleModel(ModelABC):
     
     brakesystem : SimpleBrake = SimpleBrake(rBB=0.63, MBrake_ref=11000) # Again needs halfing
     
-    powertrain : SimpleDirectDrive = SimpleDirectDrive(5000) # torque is g-box out so half at wheel model
+    powertrain : OptimalPower = OptimalPower(PowerMax=700e3, effeciency=0.9) # torque is g-box out so half at wheel model
     
     def __init__(self, parameters:dict=None, 
                  wheelf_overload=None, wheelr_overload=None) -> None:
@@ -71,7 +71,9 @@ class BicycleModel(ModelABC):
         # Evalate sub models
         FAero = self.aero.GetAeroForce(vx, vy)
         brakes : BrakingSystemOutput = self.brakesystem.resolveBrakeThrottle(rBrakeThrottle=rThrottleBrake)
-        driveshaft : Powertrain_Outputs = self.powertrain.resolveBrakeThrottle(rBrakeThrottle=rThrottleBrake)
+        finaldrive : Powertrain_Outputs = self.powertrain.resolveBrakeThrottle(
+            rBrakeThrottle=rThrottleBrake, omega_axle=nwheelr
+            )
         
         c_, s_ = np.cos(aSteer), np.sin(aSteer)
         R_wv = np.array(((c_, s_), (-s_, c_))) # rotation matrix to wheel from vehicle
@@ -89,7 +91,7 @@ class BicycleModel(ModelABC):
         
         kappaR = np.clip(kappaR, -1.0, 1.0)
         wheelr_out : WheelOutputs = self.wheelr.Evaluate(
-            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear / 2.0, driveshaft.MDriveshaft / 2.0, mass, h
+            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear / 2.0, finaldrive.MFinalDrive / 2.0, mass, h
         )
         
         # Evaluate vehicle model
