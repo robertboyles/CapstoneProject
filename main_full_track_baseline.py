@@ -15,7 +15,7 @@ from stable_baselines3.common.type_aliases import Schedule
 from read_track_data import TrackDataReader
 
 loadcheckpoint, from_log = False, False
-save_name = "sac_full_lap_test_easyCar"
+save_name = "sac_pathfinding_rewards_easyCar"
 save_name = "./logs/" + save_name if from_log else save_name
 nepisodes = 5000000
 
@@ -28,7 +28,7 @@ trackdata = TrackDataReader().load_example_data()
 s = trackdata['s']
 k = trackdata['k']
 
-track : TrackDefinition = TrackDefinition(s, k, width=2.0, k_error_scale=1.5)
+track : TrackDefinition = TrackDefinition(s, k, width=10.0, k_error_scale=1.5)
 track.X0 = np.array([0, 0, 0, 0, 0, 0])
 
 chassis_params = {
@@ -41,24 +41,25 @@ chassis_params = {
         }
 
 tyref_params = {
-            'FzN':8000,     'Fz2N':8000, 
+            'FzN':4000,     'Fz2N':8000, 
             'dF0xN':200000, 'dF0x2N':210000,
             'dF0yN':80000,  'dF0y2N':90000,
             'sMxN':0.11,     'sMx2N':0.2,
             'sMyN':0.24,     'sMy2N':0.45,
             'FMxN':8700,   'FMx2N':10000,
             'FMyN':7500,   'FMy2N':10000,
-            'xComb' :0.01,   'yComb':0.01}
+            'xComb' :0.1,   'yComb':0.1}
 
 tyrer_params = {
-            'FzN':8000,     'Fz2N':8000, 
+            'FzN':4000,     'Fz2N':8000, 
             'dF0xN':200000, 'dF0x2N':210000,
             'dF0yN':90000,  'dF0y2N':100000,
             'sMxN':0.11,     'sMx2N':0.2,
             'sMyN':0.24,     'sMy2N':0.45,
             'FMxN':10000,   'FMx2N':10000,
             'FMyN':9000,   'FMy2N':10000,
-            'xComb' :0.01,   'yComb':0.01}
+            'xComb' :0.1,   'yComb':0.1}
+
 
 tyref = Tyre(
     parameters=tyref_params, rRolling=0.3
@@ -72,6 +73,7 @@ wheelf = Wheel(Izz=1.5, tyre=tyref)
 wheelr = Wheel(Izz=1.5, tyre=tyrer)
 
 car : BicycleModel = BicycleModel(parameters=chassis_params, wheelf_overload=wheelf, wheelr_overload=wheelr)
+# car : BicycleModel = BicycleModel()
 car.powertrain.MDrive_ref = 200.0
 car.X0 = np.array([30,0,0,30/0.3,30/0.3,0,0.0001,0,0,0.2,0])
 
@@ -80,8 +82,6 @@ carmodel : Environment = Environment(vehicleModel=car, track=track,
 
 env = EnvironmentGym(model=carmodel)
 env = TimeLimit(env, max_episode_steps=4000)
-
-
 
 if not loadcheckpoint:
     #policy_kwargs = dict(net_arch=[256, 256])

@@ -172,19 +172,32 @@ class Environment():
         self.action_history.append(self.current_actions)
         self.t = self.integrator.t
         self.time.append(self.t)
-        
     
-    def GetOutputTrajectory(self, name):
+    def GetFullOutputArray(self):
         _temp = self.output_history.copy()
         _temp.append(_temp[-1])
-        trajectory = np.array(_temp)
+        return np.array(_temp), self.outputNames
+    
+    def GetFullActionArray(self):
+        _temp = self.action_history.copy()
+        _temp.append(_temp[-1])
+        return np.array(_temp), self.actionNames
+    
+    def GetFullStateArray(self):
+        return np.array(self.state_history), self.variableNames
+
+    def GetOutputTrajectory(self, name):
+        trajectory, _ = self.GetFullOutputArray()
         return trajectory[:, self.outputNames.index(name)]
     
     def GetActionTrajectory(self, name):
-        _temp = self.action_history.copy()
-        _temp.append(_temp[-1])
-        trajectory = np.array(_temp)
+        trajectory, _ = self.GetFullActionArray()
         return trajectory[:, self.actionNames.index(name)]
+    
+    def GetStateTrajectory(self, name):
+        _, index = self.GetStateValue(name)
+        trajectory, _ = self.GetFullStateArray()
+        return trajectory[:, index]
     
     def GetStateValue(self, name):
         index = self.variableNames.index(name)   
@@ -194,11 +207,12 @@ class Environment():
         index = self.outputNames.index(name)   
         return self.lastOutputs[index], index
     
-    def GetStateTrajectory(self, name):
-        _, index = self.GetStateValue(name)
-        trajectory = np.array(self.state_history)
-        return trajectory[:, index]
+    def GetStateValue_index(self, index): 
+        return self.X[index]
     
+    def GetOutputValue_index(self, index):
+        return self.lastOutputs[index]
+        
     def GetTime(self) -> np.array:
         return np.array(self.time)
         

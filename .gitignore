@@ -4,6 +4,7 @@ __pycache__/
 tfb/
 logs/
 plots/
+evaluations/
 
 # C extensions
 *.so

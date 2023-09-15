@@ -8,119 +8,120 @@ from read_track_data import TrackDataReader
 import matplotlib
 matplotlib.use('pdf')
 import matplotlib.pyplot as plt
+from Rewards import initial_working
+import pickle
+import os
 
 
 class EnvironmentGym(gym.Env):
     scale_progress_term, progress_period = 10.0, 1/5
     scale_boundary_term = -20.0
-    pdf_interval = 2000
         
-    def __init__(self, model:Environment) -> None:
+    def __init__(self, model:Environment, reward_fun=initial_working, save_path='./plots/unnamed', pdf_interval=2000) -> None:
         # drBrakeThrottle, daHandWheel
         self.action_space = gym.spaces.Box(
             np.array([-1, -1]).astype(np.float32),
             np.array([+1, +1]).astype(np.float32))
         
-        nk = 10
-        curve_max = np.ones([nk]) * 0.1
-        curve_min = np.ones([nk]) * -0.1
         self.observation_space = gym.spaces.Box(
             np.array([-1, -1, -model.sfinal, 0, -1, -200*np.pi/180, 10,  -100, -15.0, -2*np.pi, -100, -60, -70*np.pi/180 , 
-                      -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1,
-                       0, 0, 0, 0, 0]).astype(np.float32),
+                      -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1]).astype(np.float32),
             np.array([1, 1, model.sfinal*0.1, 1, 1,  200*np.pi/180, 100, 100, 15.0,  2*np.pi, 50, 60, 70*np.pi/180, 
-                      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
-                      100, 100, 100, 100, 100]).astype(np.float32)
+                      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]).astype(np.float32)
         )
         
+        self.save_path = save_path
+        self.pdf_interval = pdf_interval
         self.render_mode = None
         self.model : Environment = model
+        self._rewardfun = reward_fun
+        self._initialise_indices()
 
         self.print_next_terminal = False
         self.steps_count = 0
+        self.lap_steps = 0.0
     
     def _reward(self, action
     ) -> float:
-        new_slap, _ = self.model.GetStateValue('s')
-        progress = self.scale_progress_term * (
-            new_slap - self.previous_slap)
-        self.previous_slap = new_slap
-        
-        yError, _ = np.abs(self.model.GetStateValue('ey'))
-        width, _ = self.model.GetOutputValue('width')
-        
-        dsdt, _ = self.model.GetOutputValue('dsdt')
-        kappaf, _ = self.model.GetStateValue('kappaF')
-        kappar, _ = self.model.GetStateValue('kappaR')
-        rBrakeThrottle, _ = self.model.GetStateValue('rBrakeThrottle')
-        aHandwheel, _ = self.model.GetStateValue('aHandWheel')
-        
-        drBrakeThrottle, daHandWheel = self.__scale_actions__(action)
-
-        lout_of_bounds = np.abs(yError) - (width/2)
-        bout_of_bounds = lout_of_bounds > 0.0
-
-        max_dsdt = 100
-        boundary = -(0.5 + (dsdt * (np.tanh(lout_of_bounds)) / (2*max_dsdt))) * yError * yError * yError * yError
-        to_slow_pen = 100 * np.tanh(0.4 * dsdt + 2) - 99.1445
-        to_slow_deprecated = 10 * np.clip(dsdt, -100, 0)
-        slip_pen_fun = lambda slip : -100 * slip**2 - 9 * slip + 0.1
-        combined_pen = np.abs(rBrakeThrottle) * np.abs(aHandwheel / self.model.car.max_ahandwheel)
-         
-        reward = (progress * (1 - bout_of_bounds) + boundary
-                  + slip_pen_fun(kappaf) / 500
-                  + slip_pen_fun(kappar) / 500
-                  + to_slow_pen 
-                  - combined_pen
-                  - 1e-2 * drBrakeThrottle * drBrakeThrottle 
-                  - 1e-2 * daHandWheel * daHandWheel)
-        reward = reward / 100.0 # help critic loss remain within a sensible range
-
-        if new_slap >= self.model.sfinal:
-            reward += 50
-
-        return reward
+        return self._rewardfun(self, action)
     
     def _state(self) -> np.array:
-        var = self.model.GetStateValue
-        out = self.model.GetOutputValue
-        
-        # raw = np.array(
-        #     [
-        #       var('vx')[0], var('vy')[0], out('gLong')[0], out('gLat')[0],
-        #       var('ey')[0], var('ephi')[0],
-        #       out('range0')[0], out('range1')[0], out('range2')[0], out('range3')[0], out('range4')[0],
-        #       self.model.track.K(var('s')[0] + 5), self.model.track.K(var('s')[0] + 20)  
-        #     ], dtype=np.float32
-        # )
-        
+        # Get model values
+        dsdt = self.model.GetOutputValue_index(
+            self.ind_out_dsdt
+        )
+        s = self.model.GetStateValue_index(
+            self.ind_var_s
+        )
+        ey = self.model.GetStateValue_index(
+            self.ind_var_ey
+        )
+        width = self.model.GetOutputValue_index(
+            self.ind_out_width
+        )
+        kappaf = self.model.GetStateValue_index(
+            self.ind_var_kappaf
+        )
+        kappar = self.model.GetStateValue_index(
+            self.ind_var_kappar
+        )
+        rbrakethrottle = self.model.GetStateValue_index(
+            self.ind_var_rbrakethrottle
+        )
+        ahandwheel = self.model.GetStateValue_index(
+            self.ind_var_ahandwheel
+        )
+        vx = self.model.GetStateValue_index(
+            self.ind_var_vx
+        )
+        vy = self.model.GetStateValue_index(
+            self.ind_var_vy
+        )
+        ephi = self.model.GetStateValue_index(
+            self.ind_var_ephi
+        )
+        ax = self.model.GetOutputValue_index(
+            self.ind_out_ax
+        )
+        ay = self.model.GetOutputValue_index(
+            self.ind_out_ay
+        )
+        nyaw = self.model.GetStateValue_index(
+            self.ind_var_nyaw
+        )
+
         nk = 10
         time_horizon = 10.0
-        s_horizon = out('dsdt')[0] * time_horizon
+        s_horizon = dsdt * time_horizon
         ds = s_horizon / nk
         
-        s_curves = var('s')[0] + range(nk) * ds
+        s_curves = s + range(nk) * ds
         k_future = self.model.track.K(s_curves)
         
-        if np.abs(var('ey')[0]) > (out('width')[0] / 2):
+        if np.abs(ey) > (width / 2):
             out_of_bounds = 1
         else:
             out_of_bounds = 0
         
-        lidar = self.model.track.rangefinder.getDistances(
-            var('ephi')[0], var('ey')[0], var('s')[0]
-        )
+        #lidar = self.model.track.rangefinder.getDistances(
+        #    var('ephi')[0], var('ey')[0], var('s')[0]
+        #)
 
         raw = np.concatenate(
             [np.array(
             [
-              var('kappaF')[0], var('kappaR')[0], var('s')[0] - self.model.sfinal, out_of_bounds, var('rBrakeThrottle')[0], var('aHandWheel')[0],
-              var('vx')[0], var('vy')[0],
-              var('ey')[0], var('ephi')[0],
-              out('ax')[0], out('ay')[0],
-              var('nYaw')[0]
+              kappaf,
+              kappar,
+              s - self.model.sfinal, 
+              out_of_bounds, 
+              rbrakethrottle,
+              ahandwheel,
+              vx, vy,
+              ey, ephi,
+              ax, ay,
+              nyaw
             ], dtype=np.float32
-        ), k_future, lidar])
+        ), k_future])
         
         obs_high = self.observation_space.high
         obs_low = self.observation_space.low
@@ -134,44 +135,55 @@ class EnvironmentGym(gym.Env):
         return np.array([a0, a1])
         
     def render(self, mode) -> None:
+
+        # parent folder based on constructed log location, else default
+        # Set the folder name (based on count)
+
         x, y, xl, yl, xr, yr = self.model.track.plot_track(show=False)
-        
+
+        root_path = os.path.join(self.save_path, self.steps_count.__str__())
+        isExist = os.path.exists(root_path)
+        if not isExist:
+            os.makedirs(root_path)
+
+        FinalTrajectory().save(self.model, root_path)
+
         plt.close()
         plt.ioff()
         plt.figure()
         plt.subplot(2,3,1)
-        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('drBrakeThrottle'))
+        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('drBrakeThrottle'), linewidth=0.1)
         plt.title('drBrakeThrottle')
         plt.subplot(2,3,2)
-        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('daHandWheel') * 180/np.pi)
+        plt.plot(self.model.GetTime(), self.model.GetActionTrajectory('daHandWheel') * 180/np.pi, linewidth=0.1)
         plt.title('daHandwheel')
         plt.subplot(2,3,4)
-        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('rBrakeThrottle'))
+        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('rBrakeThrottle'), linewidth=0.1)
         plt.title('rBrakeThrottle')
         plt.subplot(2,3,5)
-        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('aHandWheel') * 180/np.pi)
+        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('aHandWheel') * 180/np.pi, linewidth=0.1)
         plt.title('aHandWheel')
         plt.subplot(2,3,6)
-        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('ey'))
+        plt.plot(self.model.GetTime(), self.model.GetStateTrajectory('ey'), linewidth=0.1)
         plt.title('ey')
         plt.subplot(2,3,3)
         plt.plot(self.model.GetTime(), np.sqrt(
                  self.model.GetStateTrajectory('vx') * self.model.GetStateTrajectory('vx') +
-                 self.model.GetStateTrajectory('vy') * self.model.GetStateTrajectory('vy')))
-        plt.title('dsdt')
-        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_Controls.pdf')
+                 self.model.GetStateTrajectory('vy') * self.model.GetStateTrajectory('vy')), linewidth=0.1)
+        plt.title('vMag')
+        plt.savefig(os.path.join(root_path, '_SAC_Controls.pdf'))
 
         plt.close()
         plt.figure()
         plt.subplot(2,1,1)
-        plt.plot(self.model.GetStateTrajectory('x_global'), self.model.GetStateTrajectory('y_global'))
+        plt.plot(self.model.GetStateTrajectory('x_global'), self.model.GetStateTrajectory('y_global'), linewidth=0.1)
         plt.title('Spatial Trajectory Taken')
         plt.subplot(2,1,2)
-        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('dsdt') * 3.6)
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('dsdt') * 3.6, linewidth=0.1)
         plt.title('Velocity Profile')
         plt.xlabel('sLap [m]')
         plt.ylabel('vPath [kph]')
-        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_PathTaken.pdf')
+        plt.savefig(os.path.join(root_path, '_SAC_PathTaken.pdf'))
 
         plt.close()
         plt.figure()
@@ -187,7 +199,7 @@ class EnvironmentGym(gym.Env):
         plt.subplot(2,2,4)
         plt.plot(self.model.GetOutputTrajectory('kappaR'), self.model.GetOutputTrajectory('wheel_r_Fx'), marker='*', linestyle="None")
         plt.title('Rear Long.')
-        plt.savefig('./plots/' + self.steps_count.__str__() + '_SAC_TyreLoads.pdf')
+        plt.savefig(os.path.join(root_path, '_SAC_TyreLoads.pdf'))
 
         plt.close()
         plt.figure()
@@ -196,29 +208,50 @@ class EnvironmentGym(gym.Env):
         plt.plot(xl, yl, color='red', linewidth=0.1)
         plt.plot(xr, yr, color='red', linewidth=0.1)
         plt.axis('square')
-        plt.savefig('./plots/' + self.steps_count.__str__()  + '_SAC_RacingLine.pdf')
+        plt.savefig(os.path.join(root_path, '_SAC_RacingLine.pdf'))
+
+        plt.close()
+        plt.figure()
+        plt.subplot(2,2,1)
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('beta'))
+        plt.title('Side Slip')
+        plt.subplot(2,2,2)
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('aUndersteer_yaw'), linewidth=0.1)
+        plt.title('aUndersteer_yaw')
+        plt.subplot(2,2,4)
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('alphaF'), linewidth=0.1)
+        plt.plot(self.model.GetStateTrajectory('s'), self.model.GetOutputTrajectory('alphaR'), linewidth=0.1)
+        plt.title('Front and Rear Slip Angles')
+        plt.savefig(os.path.join(root_path, '_SAC_Stability.pdf'))
         return
     
     def step(self, action: np.array
              ):
         self.steps_count += 1
+        self.lap_steps += 1
 
         self.model.step(action[0], action[1])
-        
-        s, _ = self.model.GetStateValue('s')
-        ey, _ = self.model.GetStateValue('ey')        
-        dsdt, _ = self.model.GetOutputValue('dsdt')
-        
+
+        dsdt = self.model.GetOutputValue_index(
+            self.ind_out_dsdt
+        )
+        s = self.model.GetStateValue_index(
+            self.ind_var_s
+        )
+        ey = self.model.GetStateValue_index(
+            self.ind_var_ey
+        )
+                
         terminated = s > self.model.sfinal
         truncated = (np.abs(ey) > 5.0 or # (10.0 * width * 0.5)  ## This fixed value of 5 helps keep ey*ey*ey*ey in rewards low, otherwise wider tracks cause convergence issues
                      self.model.t > self.model.t_limit) or dsdt < -10.0
         
         if truncated:
-            info_dict = {"is_success": False, "TimeLimit.truncted": True}
+            info_dict = {"is_success": False, "TimeLimit.truncted": True, "nSteps_time": 0}
         elif terminated:
-            info_dict = {"is_success": True, "TimeLimit.truncted": False}
+            info_dict = {"is_success": True, "TimeLimit.truncted": False, "nSteps_time": self.lap_steps}
         else:
-            info_dict = {"is_success": False, "TimeLimit.truncted": False}
+            info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
         
         if self.steps_count % self.pdf_interval == 0:
             self.print_next_terminal = True
@@ -233,10 +266,56 @@ class EnvironmentGym(gym.Env):
               ):
         self.model.initialise()
         self.previous_slap = 0.0
+        self.lap_steps = 0.0
         return self._state()
     
     def close(self):
         return
+    
+    def _initialise_indices(self):
+        _, self.ind_out_dsdt = self.model.GetOutputValue('dsdt')
+        _, self.ind_var_s = self.model.GetStateValue('s')
+        _, self.ind_var_ey = self.model.GetStateValue('ey')
+        _, self.ind_out_width = self.model.GetOutputValue('width')
+        _, self.ind_var_kappaf = self.model.GetStateValue('kappaF')
+        _, self.ind_var_kappar = self.model.GetStateValue('kappaR')
+        _, self.ind_var_rbrakethrottle = self.model.GetStateValue('rBrakeThrottle')
+        _, self.ind_var_ahandwheel = self.model.GetStateValue('aHandWheel')
+        _, self.ind_var_vx = self.model.GetStateValue('vx')
+        _, self.ind_var_vy = self.model.GetStateValue('vy')
+        _, self.ind_var_ephi = self.model.GetStateValue('ephi')
+        _, self.ind_out_ax = self.model.GetOutputValue('ax')
+        _, self.ind_out_ay = self.model.GetOutputValue('ay')
+        _, self.ind_var_nyaw = self.model.GetStateValue('nYaw')
+
+class FinalTrajectory():
+    def __init__(self) -> None:
+        self.time = None
+        self.states = None
+        self.outputs = None
+        self.actions = None
+        self.state_names = None
+        self.output_names = None
+        self.action_names = None
+    
+    def save(self, model:Environment, save_path):
+        self.states, self.state_names = model.GetFullStateArray()
+        self.outputs, self.output_names = model.GetFullOutputArray()
+        self.actions, self.action_names = model.GetFullActionArray()
+        self.time = model.GetTime()
+        
+        file_name = os.path.join(save_path, 'data' + '.pkl')
+        with open(file_name, 'wb') as file:
+            pickle.dump(self, file)
+            print(f'Object successfully saved to "{file_name}"')
+
+    @staticmethod
+    def load(save_path):
+        file_name = os.path.join(save_path, 'data' + '.pkl')
+        with open(file_name, 'rb') as pickle_file:
+            data : FinalTrajectory = pickle.load(pickle_file)
+        return data
+        
 
 if __name__ == "__main__":
 

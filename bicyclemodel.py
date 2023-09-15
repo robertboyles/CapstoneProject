@@ -61,6 +61,8 @@ class BicycleModel(ModelABC):
         mass = p['mass']
         Izz = p['Izz']
         max_aHandWheel = p['max_aHandWheel']
+        DEG = 180/np.pi
+        RAD = 1/DEG
         
         # Assign inputs
         rThrottleBrake = np.clip(x[self.ind_rBrakeThrottle], -1, 1)
@@ -111,14 +113,12 @@ class BicycleModel(ModelABC):
         dx[self.ind_nyaw] = (1/Izz) * (Mf + Mr)
         dx[self.ind_nwheelf] = wheelf_out.dOmega
         dx[self.ind_nwheelr] = wheelr_out.dOmega
-        dx[self.ind_kappaF] = wheelf_out.dkappa
-        dx[self.ind_kappaR] = wheelr_out.dkappa
-        dx[self.ind_tanalphaF] = wheelf_out.dtanalpha
-        dx[self.ind_tanalphaR] = wheelr_out.dtanalpha
+
         
         drBrakeThrottleRequest = u[self.ind_drBrakeThrottle]
         daHandWheelRequest = u[self.ind_daHandWheel]
         
+        # Apply state constraints where appropriate
         eps = 1e-3
         if rThrottleBrake < -1+eps and drBrakeThrottleRequest < 0.0:
             drBrakeThrottle = 0.0
@@ -133,12 +133,18 @@ class BicycleModel(ModelABC):
             daHandWheel = 0.0
         else:
             daHandWheel = daHandWheelRequest
-            
+        
+        # do I need the same for kappa and alpha?
+
         dx[self.ind_rBrakeThrottle] = drBrakeThrottle
         dx[self.ind_aHandWheel] = daHandWheel
-        
-        y[self.ind_ax] = dx[0] # not really correct
-        y[self.ind_ay] = dx[1] # not really correct
+        dx[self.ind_kappaF] = wheelf_out.dkappa
+        dx[self.ind_kappaR] = wheelr_out.dkappa
+        dx[self.ind_tanalphaF] = wheelf_out.dtanalpha
+        dx[self.ind_tanalphaR] = wheelr_out.dtanalpha
+
+        y[self.ind_ax] = dx[0]
+        y[self.ind_ay] = dx[1]
         y[self.ind_fyf] = np.array([Ff[1]])
         y[self.ind_fyr] = np.array([Fr[1]])
         y[self.ind_fxf] = np.array([Ff[0]])
@@ -165,6 +171,15 @@ class BicycleModel(ModelABC):
 
         y[self.ind_axle_f_wr] = np.array([axle_f_wr[1]])
         y[self.ind_axle_r_wr] = np.array([axle_r_wr[1]])
+
+        y[self.ind_beta] = np.array([np.arctan2(vy, np.abs(vx) + 1e-6) * DEG])
+
+        wheelbase = lf + lr
+        vmag = np.sqrt((vx*vx) + (vy*vy))
+        deltaAckerman = wheelbase * nyaw / vmag
+        sign_of_ackerman = np.sign(deltaAckerman) if deltaAckerman != 0.0 else 1 
+
+        y[self.ind_understeer_yaw] = np.array([((aSteer * sign_of_ackerman) - np.abs(deltaAckerman)) * DEG])
         
                 
         return dx, y
@@ -217,6 +232,9 @@ class BicycleModel(ModelABC):
         _, self.ind_outalphaR = self.GetNamedValue('alphaR', self.getOutputNames())
         _, self.ind_outkappaF = self.GetNamedValue('kappaF', self.getOutputNames())
         _, self.ind_outkappaR = self.GetNamedValue('kappaR', self.getOutputNames())
+
+        _, self.ind_beta = self.GetNamedValue('beta', self.getOutputNames())
+        _, self.ind_understeer_yaw = self.GetNamedValue('aUndersteer_yaw', self.getOutputNames())
         
     
     @staticmethod
@@ -236,7 +254,8 @@ class BicycleModel(ModelABC):
             'wheel_f_Fx', 'wheel_f_Fy', 'wheel_r_Fx', 'wheel_r_Fy',
             'wheel_f_vx', 'wheel_f_vy', 'wheel_r_vx', 'wheel_r_vy', 
             'alphaF', 'alphaR', 'kappaF', 'kappaR', 'Mf', 'Mr',
-            'axle_f_wr', 'axle_r_wr'
+            'axle_f_wr', 'axle_r_wr', 'beta',
+            'aUndersteer_yaw'
         )
     
     @staticmethod
