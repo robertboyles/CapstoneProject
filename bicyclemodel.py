@@ -1,7 +1,6 @@
 import numpy as np
 from Aero import SimpleAero
 from Wheel import Wheel, WheelOutputs
-# from Wheel import Tyre
 from Wheel import Rill as Tyre
 from BrakingSystem import SimpleBrake, BrakingSystemOutput
 from Powertrain import SimpleDirectDrive, Powertrain_Outputs
@@ -22,7 +21,7 @@ class BicycleModel(ModelABC):
                             tyre=Tyre(rRolling=0.3)
                             )
     
-    brakesystem : SimpleBrake = SimpleBrake(rBB=0.63, MBrake_ref=11000) 
+    brakesystem : SimpleBrake = SimpleBrake(rBB=0.63, MBrake_ref=11000) # Again needs halfing
     
     powertrain : SimpleDirectDrive = SimpleDirectDrive(5000) # torque is g-box out so half at wheel model
     
@@ -80,17 +79,17 @@ class BicycleModel(ModelABC):
         axle_f_wr = (np.array([0.0, nyaw]).T * lf)
         axle_r_wr = -(np.array([0.0, nyaw]).T * lr)
 
-        vhub_f = (np.matmul(R_wv, np.array([vx, vy + nyaw * lf]).T)) # I think this wr also needs rotating!
+        vhub_f = (np.matmul(R_wv, np.array([vx, vy + nyaw * lf]).T))
         vhub_r = (np.array([vx, vy - nyaw*lr]).T)
 
         kappaF = np.clip(kappaF, -1.0, 0.0)
         wheelf_out : WheelOutputs = self.wheelf.Evaluate(
-            nwheelf, kappaF, tanalphaF, vhub_f, brakes.MFront, 0.0, mass, h
+            nwheelf, kappaF, tanalphaF, vhub_f, brakes.MFront / 2.0, 0.0, mass, h
         )
         
         kappaR = np.clip(kappaR, -1.0, 1.0)
         wheelr_out : WheelOutputs = self.wheelr.Evaluate(
-            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear, driveshaft.MDriveshaft / 2.0, mass, h
+            nwheelr, kappaR, tanalphaR, vhub_r, brakes.MRear / 2.0, driveshaft.MDriveshaft / 2.0, mass, h
         )
         
         # Evaluate vehicle model
@@ -173,7 +172,6 @@ class BicycleModel(ModelABC):
 
         y[self.ind_understeer_yaw] = np.array([((aSteer * sign_of_ackerman) - np.abs(deltaAckerman)) * DEG])
         
-                
         return dx, y
     
     def initialise_references(self) -> None:
@@ -218,8 +216,6 @@ class BicycleModel(ModelABC):
         _, self.ind_axle_f_wr = self.GetNamedValue('axle_f_wr', self.getOutputNames())
         _, self.ind_axle_r_wr = self.GetNamedValue('axle_r_wr', self.getOutputNames())
 
-
-        
         _, self.ind_outalphaF = self.GetNamedValue('alphaF', self.getOutputNames())
         _, self.ind_outalphaR = self.GetNamedValue('alphaR', self.getOutputNames())
         _, self.ind_outkappaF = self.GetNamedValue('kappaF', self.getOutputNames())
