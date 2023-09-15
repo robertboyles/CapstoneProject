@@ -6,6 +6,7 @@ logs/
 plots/
 evaluations/
 best_models/
+local tasks/
 
 # C extensions
 *.so
