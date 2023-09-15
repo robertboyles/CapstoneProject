@@ -5,6 +5,7 @@ tfb/
 logs/
 plots/
 evaluations/
+best_models/
 
 # C extensions
 *.so
