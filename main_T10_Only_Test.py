@@ -14,9 +14,9 @@ from BaselineModels import GetBaseCar, GetBaseTrack
 import os
 
 # Task Definitions
-save_name = "testing"
+save_name = "raw_reward_relax_more_power"
 
-nepisodes = 5000000
+nepisodes = 1000000
 
 echo_freq = 5
 

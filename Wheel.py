@@ -138,7 +138,7 @@ class Wheel():
     
     def __bc__(self, omega, slip, tanalpha, vxhub, vyhub):
         R = self.tyre.rRolling
-        B = 1 # relaxation length
+        B = 0.3
         b = 0.3
         sgn = np.sign(vxhub)
         if sgn == 0:

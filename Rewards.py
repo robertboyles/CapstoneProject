@@ -93,10 +93,10 @@ def path_finding(self, action
         
     reward = (progress * (1 - bout_of_bounds) 
                 + boundary
-                + slip_pen_fun(kappaf) / 500
-                + slip_pen_fun(kappar) / 500
+                #+ slip_pen_fun(kappaf) / 500
+                #+ slip_pen_fun(kappar) / 500
                 + to_slow_pen 
-                - combined_pen
+                #- combined_pen
                 - 1e-2 * drBrakeThrottle * drBrakeThrottle 
                 - 1e-2 * daHandWheel * daHandWheel)
     reward = reward / 100.0 # help critic loss remain within a sensible range

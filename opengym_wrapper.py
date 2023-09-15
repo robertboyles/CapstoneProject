@@ -14,7 +14,7 @@ import os
 
 
 class EnvironmentGym(gym.Env):
-    scale_progress_term, progress_period = 10.0, 1/5
+    scale_progress_term, progress_period = 20.0, 1/5
     scale_boundary_term = -20.0
         
     def __init__(self, model:Environment, reward_fun=initial_working, save_path='./plots/unnamed', pdf_interval=2000) -> None:

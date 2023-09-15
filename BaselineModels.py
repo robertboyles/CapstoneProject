@@ -47,7 +47,6 @@ def GetBaseCar():
     wheelr = Wheel(Izz=1.5, tyre=tyrer)
 
     car : BicycleModel = BicycleModel(parameters=chassis_params, wheelf_overload=wheelf, wheelr_overload=wheelr)
-    car.powertrain.MDrive_ref = 200.0
     car.X0 = np.array([30,0,0,30/0.3,30/0.3,0,0.0001,0,0,0.2,0])
     return car
 
