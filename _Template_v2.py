@@ -32,6 +32,8 @@ trackdata = TrackDataReader.readCSV("./data/old_T10.csv")
 bStraightline_overload = False
 reward_fun = path_following
 batch_size, gamma, learning_starts = 1024, 0.99, 100
+seed = 42
+ERB_Size = 1e6
 
 nepisodes = None
 log_params_freq = None
@@ -75,12 +77,12 @@ env = TimeLimit(env, max_episode_steps=4000)
 
 # Agent
 if resume_from_termination:
-    model : SAC = SAC.load(os.path.join(terminal_path, parent_name), env=env)
+    model : SAC = SAC.load(os.path.join(terminal_path, parent_name), env=env) # Will inherit original ERB size
     if os.path.exists(os.path.join(terminal_path, parent_name + '_ERB.pkl')) and load_ERB:
         model.load_replay_buffer(os.path.join(terminal_path, parent_name + '_ERB.pkl'))
     tb_log_name = stage_name
 else:
-    model = SAC(MlpPolicy, env)
+    model : SAC = SAC(MlpPolicy, env, seed=seed, buffer_size=ERB_Size)
     tb_log_name = 'parent'
 
 # Learn
