@@ -7,6 +7,7 @@ plots/
 evaluations/
 best_models/
 local tasks/
+terminal_models/
 
 # C extensions
 *.so
