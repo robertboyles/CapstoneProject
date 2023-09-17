@@ -8,16 +8,15 @@ from read_track_data import TrackDataReader
 import matplotlib
 matplotlib.use('pdf')
 import matplotlib.pyplot as plt
-from Rewards import initial_working
+from Rewards import path_following, _default_reward_weights
 import pickle
 import os
 
 
 class EnvironmentGym(gym.Env):
-    scale_progress_term, progress_period = 20.0, 1/5
-    scale_boundary_term = -20.0
         
-    def __init__(self, model:Environment, reward_fun=initial_working, save_path='./plots/unnamed', pdf_interval=2000) -> None:
+    def __init__(self, model:Environment, 
+                 reward_fun=path_following, save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
         # drBrakeThrottle, daHandWheel
         self.action_space = gym.spaces.Box(
             np.array([-1, -1]).astype(np.float32),
@@ -30,6 +29,7 @@ class EnvironmentGym(gym.Env):
                       0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]).astype(np.float32)
         )
         
+        self.reward_weights = _default_reward_weights() if reward_weights is None else reward_weights
         self.save_path = save_path
         self.pdf_interval = pdf_interval
         self.render_mode = None
@@ -41,9 +41,9 @@ class EnvironmentGym(gym.Env):
         self.steps_count = 0
         self.lap_steps = 0.0
     
-    def _reward(self, action
-    ) -> float:
-        return self._rewardfun(self, action)
+    def _reward(self, scalars_dict) -> float:
+        total, _, _ = self._rewardfun(scalars_dict, self.reward_weights)
+        return total
     
     def _state(self) -> np.array:
         # Get model values
@@ -263,9 +263,41 @@ class EnvironmentGym(gym.Env):
         if (terminated or truncated) and self.print_next_terminal:
             self.render(None)
             self.print_next_terminal = False
+        
+        steps_reward = self._reward(self._reward_scalars(action))
+        self.previous_slap = s # update for progress after reward calculated
 
-        return self._state(), self._reward(action), terminated or truncated, info_dict
+        return self._state(), steps_reward, terminated or truncated, info_dict
     
+    def _reward_scalars(self, action):
+        
+        s1 = self.previous_slap
+        s2 = self.model.GetStateValue_index(
+                self.ind_var_s)
+        yError = self.model.GetStateValue_index(
+                self.ind_var_ey)
+        width = self.model.GetOutputValue_index(
+                self.ind_out_width)
+        dsdt = self.model.GetOutputValue_index(
+                self.ind_out_dsdt)
+        kappaf = self.model.GetStateValue_index(
+                self.ind_var_kappaf)
+        kappar = self.model.GetStateValue_index(
+                self.ind_var_kappar)
+        rBrakeThrottle = self.model.GetStateValue_index(
+                self.ind_var_rbrakethrottle)
+        aHandwheel = self.model.GetStateValue_index(
+                self.ind_var_ahandwheel)
+        max_ahandwheel = self.model.car.max_ahandwheel
+        drBrakeThrottle, daHandWheel = self.__scale_actions__(action)
+
+        return {
+             's1': s1, 's2':s2, 
+             'yError':yError, 'width':width, 'dsdt': dsdt, 
+             'kappaf':kappaf, 'kappar':kappar, 'rBrakeThrottle':rBrakeThrottle,
+             'aHandwheel': aHandwheel, 'max_ahandwheel':max_ahandwheel,
+             'drBrakeThrottle': drBrakeThrottle, 'daHandWheel': daHandWheel}
+
     def reset(self, *, seed= None, options= None
               ):
         self.model.initialise()

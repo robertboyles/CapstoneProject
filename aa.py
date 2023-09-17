@@ -1,7 +1,5 @@
-import numpy as np
-import pickle
-from opengym_wrapper import FinalTrajectory
+aa = (1, 2, 3, 4)
 
-data : FinalTrajectory = FinalTrajectory().load('plots/testing/427')
+print(aa)
 
-print(data.time)
+print(sum(aa))
