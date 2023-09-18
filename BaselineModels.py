@@ -1,4 +1,4 @@
-import gym
+import gymnasium
 import numpy as np
 from Wheel import Wheel, Rill as Tyre
 from bicyclemodel import BicycleModel

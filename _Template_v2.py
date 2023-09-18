@@ -13,7 +13,7 @@ from bicyclemodel import BicycleModel
 from FSFrame import TrackDefinition
 from stable_baselines3.sac.policies import MlpPolicy
 from stable_baselines3 import SAC
-from gym.wrappers.time_limit import TimeLimit
+from gymnasium.wrappers.time_limit import TimeLimit
 from read_track_data import TrackDataReader
 from Rewards import *
 from custom_callbacks import callbackset

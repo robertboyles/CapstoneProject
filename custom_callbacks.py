@@ -26,6 +26,6 @@ def callbackset(save_path, save_name, save_freq, control_freq, eval_path, best_s
     save_path=save_path,
     name_prefix=save_name
     )
-    eval_call_back = EvalCallback(env, None, 1, eval_every, eval_path, best_save_path, True, False, 1)
+    eval_call_back = EvalCallback(env, None, None, 1, eval_every, eval_path, best_save_path, True, False, 1)
     callbacks = CallbackList([TensorboardLapTime(control_freq=control_freq), checkpoint_callback, eval_call_back])
     return callbacks

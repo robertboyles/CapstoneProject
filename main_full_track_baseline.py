@@ -1,4 +1,4 @@
-import gym
+import gymnasium
 import numpy as np
 import time
 from Wheel import Wheel, Rill as Tyre
@@ -9,7 +9,7 @@ from FSFrame import TrackDefinition
 from stable_baselines3.sac.policies import MlpPolicy ,SACPolicy
 from stable_baselines3.td3.policies import MlpPolicy as MlpPolicy_td3
 from stable_baselines3 import SAC, TD3
-from gym.wrappers.time_limit import TimeLimit
+from gymnasium.wrappers.time_limit import TimeLimit
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.type_aliases import Schedule
 from read_track_data import TrackDataReader
