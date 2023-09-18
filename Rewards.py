@@ -3,7 +3,7 @@ import gymnasium  as gym
 import numpy as np
 
 def _default_reward_weights():
-     return [2, 0.01, 2e-4, 2e-4, 0.01, 1e-4, 1e-4, 0.01]
+     return [0.5, 0.01, 2e-5, 2e-5, 0.001, 1e-4, 1e-4, 0.1]
 
 def path_finding(scalars_dict, reward_weights=_default_reward_weights()) -> float:
     term_values, names = _reward_default(scalars_dict, 0.0, reward_weights)
@@ -11,6 +11,11 @@ def path_finding(scalars_dict, reward_weights=_default_reward_weights()) -> floa
 
 def path_following(scalars_dict, reward_weights=_default_reward_weights()):
      term_values, names = _reward_default(scalars_dict, 1.0, reward_weights)
+     return sum(term_values), term_values, names
+
+def dynamic_reward(scalars_dict, reward_weights=_default_reward_weights()):
+     mu = 1.0 - (scalars_dict['n_succ'] / 100.0) if scalars_dict['n_succ'] < 100 else 0.0
+     term_values, names = _reward_default(scalars_dict, mu, reward_weights)
      return sum(term_values), term_values, names
 
 def _reward_default(modelState, mu, reward_weights
@@ -58,9 +63,9 @@ def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time):
      else:
           average_speed = s2 / time
 
-     av_speed_sq = average_speed**2
+     av_speed_sq = average_speed
 
-     max_, min_ = 80.0**2, 0.0
+     max_, min_ = 80.0, 0.0
      value = (av_speed_sq - min_) / (max_ - min_)
 
      # print('time %.2f \t distance %.2f \t speed %.2f \t reward %.2f' % (time, s2, average_speed, scale * value))

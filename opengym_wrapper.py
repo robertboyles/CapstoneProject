@@ -19,18 +19,6 @@ class EnvironmentGym(gym.Env):
 
     def __init__(self, model:Environment, 
                  reward_fun=path_following, save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
-        # drBrakeThrottle, daHandWheel
-        self.action_space = gym.spaces.Box(
-            np.array([-1, -1]).astype(np.float32),
-            np.array([+1, +1]).astype(np.float32))
-        
-        self.observation_space = gym.spaces.Box(
-            np.array([0, 0, -1, -1, 0, -1, -200*np.pi/180, 10,  -100, -15.0, -2*np.pi, -100, -60, -70*np.pi/180 , 
-                      -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1]).astype(np.float32),
-            np.array([model.sfinal, 120.0, 1, 1, 1, 1,  200*np.pi/180, 100, 100, 15.0,  2*np.pi, 50, 60, 70*np.pi/180, 
-                      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]).astype(np.float32)
-        )
-        
         self.reward_weights = _default_reward_weights() if reward_weights is None else reward_weights
         self.save_path = save_path
         self.pdf_interval = pdf_interval
@@ -42,92 +30,42 @@ class EnvironmentGym(gym.Env):
         self.print_next_terminal = False
         self.steps_count = 0
         self.lap_steps = 0.0
+        self.n_success = 0
+
+        # Initialise MDP vectors
+        self.action_space = gym.spaces.Box(
+            np.array([-1, -1]).astype(np.float32),
+            np.array([+1, +1]).astype(np.float32))
+        
+        obs_low = []
+        obs_high = []
+        for _, _, _low, _high in self._state_defs_():
+            obs_low.append(_low)
+            obs_high.append(_high)
+
+        self.observation_space = gym.spaces.Box(
+            np.array(obs_low).astype(np.float32),
+            np.array(obs_high).astype(np.float32)
+        )      
     
     def _reward(self, scalars_dict) -> float:
-        total, _, _ = self._rewardfun(scalars_dict, self.reward_weights)
+        total, values, _ = self._rewardfun(scalars_dict, self.reward_weights)
         # print(values)
         #scaled = (2 * ((total - (self.reward_lower)) / (self.reward_upper - (self.reward_lower)))) - 1.0
         return total
     
     def _state(self) -> np.array:
-        # Get model values
-        dsdt = self.model.GetOutputValue_index(
-            self.ind_out_dsdt
-        )
-        s = self.model.GetStateValue_index(
-            self.ind_var_s
-        )
-        ey = self.model.GetStateValue_index(
-            self.ind_var_ey
-        )
-        width = self.model.GetOutputValue_index(
-            self.ind_out_width
-        )
-        kappaf = self.model.GetOutputValue_index(
-            self.ind_out_kappaf
-        )
-        kappar = self.model.GetOutputValue_index(
-            self.ind_out_kappar
-        )
-        rbrakethrottle = self.model.GetOutputValue_index(
-            self.ind_out_rbrakethrottle
-        )
-        ahandwheel = self.model.GetOutputValue_index(
-            self.ind_out_ahandwheel
-        )
-        vx = self.model.GetStateValue_index(
-            self.ind_var_vx
-        )
-        vy = self.model.GetStateValue_index(
-            self.ind_var_vy
-        )
-        ephi = self.model.GetStateValue_index(
-            self.ind_var_ephi
-        )
-        ax = self.model.GetOutputValue_index(
-            self.ind_out_ax
-        )
-        ay = self.model.GetOutputValue_index(
-            self.ind_out_ay
-        )
-        nyaw = self.model.GetStateValue_index(
-            self.ind_var_nyaw
-        )
+        self.current_dsdt = self.model.GetOutputValue_index(
+            self.ind_out_dsdt)
+        self.current_s = self.model.GetStateValue_index(
+            self.ind_var_s)
+        
+        raw = []
+        for _, _func, _, _ in self._state_defs_():
+            raw.append(_func())
+        
+        raw = np.array(raw, dtype=np.float32)
 
-        nk = 10
-        time_horizon = 10.0
-        s_horizon = dsdt * time_horizon
-        ds = s_horizon / nk
-        
-        s_curves = s + range(nk) * ds
-        k_future = self.model.track.K(s_curves)
-        
-        if np.abs(ey) > (width / 2):
-            out_of_bounds = 1
-        else:
-            out_of_bounds = 0
-        
-        #lidar = self.model.track.rangefinder.getDistances(
-        #    var('ephi')[0], var('ey')[0], var('s')[0]
-        #)
-
-        raw = np.concatenate(
-            [np.array(
-            [
-              s,
-              self.model.GetElapsedTime(),
-              kappaf,
-              kappar,
-              out_of_bounds, 
-              rbrakethrottle,
-              ahandwheel,
-              vx, vy,
-              ey, ephi,
-              ax, ay,
-              nyaw
-            ], dtype=np.float32
-        ), k_future])
-        
         obs_high = self.observation_space.high
         obs_low = self.observation_space.low
         
@@ -135,6 +73,57 @@ class EnvironmentGym(gym.Env):
         
         return scaled
     
+    def _state_defs_(self):
+        return [
+            ('kappaf', lambda : self.model.GetOutputValue_index(self.ind_out_kappaf), -1, 1),
+            ('kappar', lambda : self.model.GetOutputValue_index(self.ind_out_kappar), -1, 1),
+            ('out_of_bounds', lambda : self._calculate_out_of_bounds(), 0, 1),
+            ('rbrakethrottle', lambda : self.model.GetOutputValue_index(self.ind_out_rbrakethrottle), -1, 1),
+            ('ahandwheel', lambda : self.model.GetOutputValue_index(self.ind_out_ahandwheel), 
+             -self.model.car.max_ahandwheel, self.model.car.max_ahandwheel),
+            ('vx', lambda : self.model.GetStateValue_index(self.ind_var_vx), -10, 100),
+            ('vy', lambda : self.model.GetStateValue_index(self.ind_var_vy), -50, 50),
+            ('ey', lambda : self.model.GetStateValue_index(self.ind_var_ey), -5, 5),
+            ('ephi', lambda : self.model.GetStateValue_index(self.ind_var_ephi), -np.pi/2, np.pi/2),
+            ('ax', lambda : self.model.GetOutputValue_index(self.ind_out_ax), -100, 50),
+            ('ay', lambda : self.model.GetOutputValue_index(self.ind_out_ay), -80, 80),
+            ('nyaw', lambda : self.model.GetStateValue_index(self.ind_var_nyaw), -70 * np.pi/180, 70 * np.pi/180),
+            ('k_0', lambda : self._get_future_k_(n=0, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_1', lambda : self._get_future_k_(n=1, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_2', lambda : self._get_future_k_(n=2, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_3', lambda : self._get_future_k_(n=3, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_4', lambda : self._get_future_k_(n=4, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_5', lambda : self._get_future_k_(n=5, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_6', lambda : self._get_future_k_(n=6, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_7', lambda : self._get_future_k_(n=7, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_8', lambda : self._get_future_k_(n=8, nk=10, t_horizon=10.0), -0.1, 0.1),
+            ('k_9', lambda : self._get_future_k_(n=9, nk=10, t_horizon=10.0), -0.1, 0.1)
+        ]
+    
+    def _get_future_k_(self, n, nk, t_horizon):
+        '''
+            nk = 10
+            time_horizon = 10.0
+            s_horizon = dsdt * time_horizon
+            ds = s_horizon / nk
+            
+            s_curves = s + range(nk) * ds
+            k_future = self.model.track.K(s_curves)'''
+        
+        s_sample = self.current_s + n * np.min([self.current_dsdt * t_horizon / nk, 1.0])
+        return self.model.track.K(s_sample)
+
+    def _calculate_out_of_bounds(self):
+        ey = self.model.GetStateValue_index(
+            self.ind_var_ey)
+        width = self.model.GetOutputValue_index(
+            self.ind_out_width)
+        if np.abs(ey) > (width / 2):
+            out_of_bounds = 1
+        else:
+            out_of_bounds = 0
+        return out_of_bounds
+
     def __scale_actions__(self, actions):
         a0, a1 = self.model.scale_actions(actions[0], actions[1])
         return np.array([a0, a1])
@@ -259,9 +248,9 @@ class EnvironmentGym(gym.Env):
         
         if truncated:
             info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
-            steps_reward -= 10
         elif terminated:
             info_dict = {"is_success": True, "TimeLimit.truncted": False, "nSteps_time": self.lap_steps}
+            self.n_success += 1
         else:
             info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
         
@@ -302,13 +291,15 @@ class EnvironmentGym(gym.Env):
         drBrakeThrottle, daHandWheel = self.__scale_actions__(action)
         time = self.model.GetElapsedTime()
 
+        n_succ = self.n_success
+
         return {
              's1': s1, 's2':s2, 
              'yError':yError, 'width':width, 'dsdt': dsdt, 
              'kappaf':kappaf, 'kappar':kappar, 'rBrakeThrottle':rBrakeThrottle,
              'aHandwheel': aHandwheel, 'max_ahandwheel':max_ahandwheel,
              'drBrakeThrottle': drBrakeThrottle, 'daHandWheel': daHandWheel, 
-             'time':time}
+             'time':time, 'n_succ': n_succ}
 
     def reset(self, *, seed= None, options= None
               ):
