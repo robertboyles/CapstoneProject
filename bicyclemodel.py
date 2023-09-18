@@ -154,6 +154,9 @@ class BicycleModel(ModelABC):
         y[self.ind_outkappaF] = np.array([wheelf_out.kappa])
         y[self.ind_outkappaR] = np.array([wheelr_out.kappa])
 
+        y[self.ind_outaHandWheel] = np.array([aHandWheel])
+        y[self.ind_outrBrakeThrottle] = np.array([rThrottleBrake])
+
         y[self.ind_wheel_f_vx] = np.array([vhub_f[0]])
         y[self.ind_wheel_f_vy] = np.array([vhub_f[1]])
         y[self.ind_wheel_r_vx] = np.array([vhub_r[0]])
@@ -223,6 +226,9 @@ class BicycleModel(ModelABC):
         _, self.ind_outkappaF = self.GetNamedValue('kappaF', self.getOutputNames())
         _, self.ind_outkappaR = self.GetNamedValue('kappaR', self.getOutputNames())
 
+        _, self.ind_outaHandWheel = self.GetNamedValue('aHandWheel', self.getOutputNames())
+        _, self.ind_outrBrakeThrottle = self.GetNamedValue('rBrakeThrottle', self.getOutputNames())
+
         _, self.ind_beta = self.GetNamedValue('beta', self.getOutputNames())
         _, self.ind_understeer_yaw = self.GetNamedValue('aUndersteer_yaw', self.getOutputNames())
         
@@ -245,7 +251,7 @@ class BicycleModel(ModelABC):
             'wheel_f_vx', 'wheel_f_vy', 'wheel_r_vx', 'wheel_r_vy', 
             'alphaF', 'alphaR', 'kappaF', 'kappaR', 'Mf', 'Mr',
             'axle_f_wr', 'axle_r_wr', 'beta',
-            'aUndersteer_yaw'
+            'aUndersteer_yaw', 'rBrakeThrottle', 'aHandWheel'
         )
     
     @staticmethod

@@ -215,6 +215,9 @@ class Environment():
         
     def GetTime(self) -> np.array:
         return np.array(self.time)
+    
+    def GetElapsedTime(self) -> np.array:
+        return np.array(self.time[-1])
         
 
 if __name__ == "__main__":

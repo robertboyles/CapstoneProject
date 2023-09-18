@@ -1,5 +1,5 @@
 from typing import Any, SupportsFloat
-import gym as gym
+import gymnasium as gym
 import numpy as np
 from environment import Environment
 from bicyclemodel import BicycleModel
@@ -14,7 +14,9 @@ import os
 
 
 class EnvironmentGym(gym.Env):
-        
+    reward_lower = -1
+    reward_upper = 0.3
+
     def __init__(self, model:Environment, 
                  reward_fun=path_following, save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
         # drBrakeThrottle, daHandWheel
@@ -23,9 +25,9 @@ class EnvironmentGym(gym.Env):
             np.array([+1, +1]).astype(np.float32))
         
         self.observation_space = gym.spaces.Box(
-            np.array([-1, -1, -model.sfinal, 0, -1, -200*np.pi/180, 10,  -100, -15.0, -2*np.pi, -100, -60, -70*np.pi/180 , 
+            np.array([0, 0, -1, -1, 0, -1, -200*np.pi/180, 10,  -100, -15.0, -2*np.pi, -100, -60, -70*np.pi/180 , 
                       -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1]).astype(np.float32),
-            np.array([1, 1, model.sfinal*0.1, 1, 1,  200*np.pi/180, 100, 100, 15.0,  2*np.pi, 50, 60, 70*np.pi/180, 
+            np.array([model.sfinal, 120.0, 1, 1, 1, 1,  200*np.pi/180, 100, 100, 15.0,  2*np.pi, 50, 60, 70*np.pi/180, 
                       0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]).astype(np.float32)
         )
         
@@ -43,6 +45,8 @@ class EnvironmentGym(gym.Env):
     
     def _reward(self, scalars_dict) -> float:
         total, _, _ = self._rewardfun(scalars_dict, self.reward_weights)
+        # print(values)
+        #scaled = (2 * ((total - (self.reward_lower)) / (self.reward_upper - (self.reward_lower)))) - 1.0
         return total
     
     def _state(self) -> np.array:
@@ -59,17 +63,17 @@ class EnvironmentGym(gym.Env):
         width = self.model.GetOutputValue_index(
             self.ind_out_width
         )
-        kappaf = self.model.GetStateValue_index(
-            self.ind_var_kappaf
+        kappaf = self.model.GetOutputValue_index(
+            self.ind_out_kappaf
         )
-        kappar = self.model.GetStateValue_index(
-            self.ind_var_kappar
+        kappar = self.model.GetOutputValue_index(
+            self.ind_out_kappar
         )
-        rbrakethrottle = self.model.GetStateValue_index(
-            self.ind_var_rbrakethrottle
+        rbrakethrottle = self.model.GetOutputValue_index(
+            self.ind_out_rbrakethrottle
         )
-        ahandwheel = self.model.GetStateValue_index(
-            self.ind_var_ahandwheel
+        ahandwheel = self.model.GetOutputValue_index(
+            self.ind_out_ahandwheel
         )
         vx = self.model.GetStateValue_index(
             self.ind_var_vx
@@ -110,9 +114,10 @@ class EnvironmentGym(gym.Env):
         raw = np.concatenate(
             [np.array(
             [
+              s,
+              self.model.GetElapsedTime(),
               kappaf,
               kappar,
-              s - self.model.sfinal, 
               out_of_bounds, 
               rbrakethrottle,
               ahandwheel,
@@ -245,13 +250,16 @@ class EnvironmentGym(gym.Env):
         ey = self.model.GetStateValue_index(
             self.ind_var_ey
         )
-                
+
+        steps_reward = self._reward(self._reward_scalars(action))
+
         terminated = s > self.model.sfinal
         truncated = (np.abs(ey) > 5.0 or # (10.0 * width * 0.5)  ## This fixed value of 5 helps keep ey*ey*ey*ey in rewards low, otherwise wider tracks cause convergence issues
                      self.model.t > self.model.t_limit) or dsdt < -10.0
         
         if truncated:
-            info_dict = {"is_success": False, "TimeLimit.truncted": True, "nSteps_time": 0}
+            info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
+            steps_reward -= 10
         elif terminated:
             info_dict = {"is_success": True, "TimeLimit.truncted": False, "nSteps_time": self.lap_steps}
         else:
@@ -264,10 +272,11 @@ class EnvironmentGym(gym.Env):
             self.render(None)
             self.print_next_terminal = False
         
-        steps_reward = self._reward(self._reward_scalars(action))
+        
         self.previous_slap = s # update for progress after reward calculated
+        self.previous_dsdt = dsdt
 
-        return self._state(), steps_reward, terminated or truncated, info_dict
+        return self._state(), steps_reward, terminated or truncated, False, info_dict
     
     def _reward_scalars(self, action):
         
@@ -280,30 +289,34 @@ class EnvironmentGym(gym.Env):
                 self.ind_out_width)
         dsdt = self.model.GetOutputValue_index(
                 self.ind_out_dsdt)
-        kappaf = self.model.GetStateValue_index(
-                self.ind_var_kappaf)
-        kappar = self.model.GetStateValue_index(
-                self.ind_var_kappar)
-        rBrakeThrottle = self.model.GetStateValue_index(
-                self.ind_var_rbrakethrottle)
-        aHandwheel = self.model.GetStateValue_index(
-                self.ind_var_ahandwheel)
+        dsdt_prev = self.previous_dsdt
+        kappaf = self.model.GetOutputValue_index(
+                self.ind_out_kappaf)
+        kappar = self.model.GetOutputValue_index(
+                self.ind_out_kappar)
+        rBrakeThrottle = self.model.GetOutputValue_index(
+                self.ind_out_rbrakethrottle)
+        aHandwheel = self.model.GetOutputValue_index(
+                self.ind_out_ahandwheel)
         max_ahandwheel = self.model.car.max_ahandwheel
         drBrakeThrottle, daHandWheel = self.__scale_actions__(action)
+        time = self.model.GetElapsedTime()
 
         return {
              's1': s1, 's2':s2, 
              'yError':yError, 'width':width, 'dsdt': dsdt, 
              'kappaf':kappaf, 'kappar':kappar, 'rBrakeThrottle':rBrakeThrottle,
              'aHandwheel': aHandwheel, 'max_ahandwheel':max_ahandwheel,
-             'drBrakeThrottle': drBrakeThrottle, 'daHandWheel': daHandWheel}
+             'drBrakeThrottle': drBrakeThrottle, 'daHandWheel': daHandWheel, 
+             'time':time}
 
     def reset(self, *, seed= None, options= None
               ):
         self.model.initialise()
         self.previous_slap = 0.0
         self.lap_steps = 0.0
-        return self._state()
+        self.previous_dsdt = self.model.GetOutputValue_index(self.ind_out_dsdt)
+        return self._state(), {}
     
     def close(self):
         return
@@ -313,10 +326,12 @@ class EnvironmentGym(gym.Env):
         _, self.ind_var_s = self.model.GetStateValue('s')
         _, self.ind_var_ey = self.model.GetStateValue('ey')
         _, self.ind_out_width = self.model.GetOutputValue('width')
-        _, self.ind_var_kappaf = self.model.GetStateValue('kappaF')
-        _, self.ind_var_kappar = self.model.GetStateValue('kappaR')
+        _, self.ind_out_kappaf = self.model.GetOutputValue('kappaF')
+        _, self.ind_out_kappar = self.model.GetOutputValue('kappaR')
         _, self.ind_var_rbrakethrottle = self.model.GetStateValue('rBrakeThrottle')
         _, self.ind_var_ahandwheel = self.model.GetStateValue('aHandWheel')
+        _, self.ind_out_rbrakethrottle = self.model.GetOutputValue('rBrakeThrottle')
+        _, self.ind_out_ahandwheel = self.model.GetOutputValue('aHandWheel')
         _, self.ind_var_vx = self.model.GetStateValue('vx')
         _, self.ind_var_vy = self.model.GetStateValue('vy')
         _, self.ind_var_ephi = self.model.GetStateValue('ephi')

@@ -1,9 +1,9 @@
 from typing import Any
-import gym as gym
+import gymnasium  as gym
 import numpy as np
 
 def _default_reward_weights():
-     return [0.2, 0.01, 2e-5, 2e-5, 0.01, 0.01, 1e-4, 1e-4]
+     return [2, 0.01, 2e-4, 2e-4, 0.01, 1e-4, 1e-4, 0.01]
 
 def path_finding(scalars_dict, reward_weights=_default_reward_weights()) -> float:
     term_values, names = _reward_default(scalars_dict, 0.0, reward_weights)
@@ -23,25 +23,49 @@ def _reward_default(modelState, mu, reward_weights
     bout_of_bounds = lout_of_bounds > 0.0
 
     return (
-           course_progress(W[0], get('s1'), get('s2'), bout_of_bounds),
+           course_progress(W[0], get('s1'), get('s2'), bout_of_bounds, get('dsdt'), get('time')),
            boundary(W[1], mu, lout_of_bounds, get('yError')),
            slip_general(W[2], get('kappaf'), 0.1),
            slip_general(W[3], get('kappar'), 0.1),
-           too_slow(W[4], get('dsdt')),
-           combined(W[5], get('rBrakeThrottle'), get('aHandwheel'), get('max_ahandwheel')),
-           throttle_control_regularisation(W[6], get('drBrakeThrottle')),
-           steering_control_regularisation(W[7], get('daHandWheel'))), reward_term_names()
+           combined(W[4], get('rBrakeThrottle'), get('aHandwheel'), get('max_ahandwheel')),
+           throttle_control_regularisation(W[5], get('drBrakeThrottle')),
+           steering_control_regularisation(W[6], get('daHandWheel')),
+           too_slow(W[7], get('dsdt'))), reward_term_names()
 
 def reward_term_names():
      # returned with above
      return (
           'course_progress', 'boundary', 'slip_kappa_f', 'slip_kappa_r',
-          'too_slow', 'combined', 'throttle_control_reg', 'steering_control_reg'
+          'combined', 'throttle_control_reg', 'steering_control_reg', 'too_slow'
      )
   
-def course_progress(scale, s1, s2, bout_of_bounds):
-        delta_s = s2 -s1
-        return (1 - bout_of_bounds) * scale * delta_s
+def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time):
+     #    ref_speed = 5 # m/s
+     #    T = 1/10.0
+     #    minimum_distance = ref_speed * T
+     #    sTravelled = s2 - s1 # range -10/10.0 = -1 -> 100/10.0 = 10
+     #    excess_distance = sTravelled - minimum_distance # 5/10 = 0.5
+     #    alpha = 1.2
+     #    value = ((np.exp(alpha * excess_distance)) - np.exp(alpha * 5)) / 1e5
+
+     #    max_, min_ = 22000, -1.5
+     #    value = (((value - (min_)) / (max_ - min_)))
+     #dsdt_max = 100
+     #delta_s = (s2 -s1) * (((dsdt + dsdt_prev) / 2) / dsdt_max)**6
+     
+     if time == 0.0:
+          average_speed = 0.0
+     else:
+          average_speed = s2 / time
+
+     av_speed_sq = average_speed**2
+
+     max_, min_ = 80.0**2, 0.0
+     value = (av_speed_sq - min_) / (max_ - min_)
+
+     # print('time %.2f \t distance %.2f \t speed %.2f \t reward %.2f' % (time, s2, average_speed, scale * value))
+
+     return (1 - bout_of_bounds) * scale * value
 
 def boundary(scale, mu, lout_of_bounds, yError):
      # barrier parameter mu, as mu -> 0, we approach path finding
@@ -52,24 +76,27 @@ def boundary(scale, mu, lout_of_bounds, yError):
 
 def slip_general(scale, slip, bound):
      violation = np.abs(slip) - bound
-     return scale * (-100 * violation**2 - 9 * violation + 0.15 if violation > 0.0 else 0.0)
-
-def too_slow(scale, dsdt):
-     # Just says, you are going in the correct direction! Issue is that this will encourage 
-     # prolonging of the episode... should really be offset to never be positive.
-     # At vMax (100m/s) -> 0.8555 ... place holder called offset
-     offset = 0.0
-     return scale * (100 * np.tanh(0.4 * dsdt + 2) - 99.1445 - offset)
+     value = (-100 * violation**2 - 9 * violation + 0.15 if violation > 0.0 else 0.0)
+     return scale * value
 
 def combined(scale, rBrakeThrottle, aHandwheel, max_ahandwheel):
-     return scale * -1 * np.abs(rBrakeThrottle) * np.abs(aHandwheel / max_ahandwheel)
+     value = -1 * np.abs(rBrakeThrottle) * np.abs(aHandwheel / max_ahandwheel)
+     return scale * value 
 
 def throttle_control_regularisation(scale, drBrakeThrottle):
-     return scale * -1 * drBrakeThrottle**2
+     value = -1 * drBrakeThrottle**2
+     return scale * value
 
 def steering_control_regularisation(scale, daHandWheel):
-     return scale * -1 * daHandWheel**2
+     value = -1 * daHandWheel**2
+     return scale * value
 
+def too_slow(scale, dsdt):
+     value = 100*np.tanh(0.4 * dsdt + 2) - 99.1445 - 0.8555
+     return scale * value
+
+def smoothMin(x, y, eps):
+    return 0.5 * ((x + y) - np.sqrt(((x - y) * (x - y)) + (eps * eps)))
 
 # Deprecated
 # def initial_working(self, action
