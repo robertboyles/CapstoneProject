@@ -16,24 +16,26 @@ from stable_baselines3 import SAC
 from gymnasium.wrappers.time_limit import TimeLimit
 from read_track_data import TrackDataReader
 from Rewards import *
+from TerminationFunctions import *
 from custom_callbacks import callbackset
 from BaselineModels import GetBaseCar_v1_0 as GetBaseCar, GetBaseTrack_v1_0 as GetBaseTrack
 import os
 
 raise NotImplementedError
 
-parent_name = "TEMPLATE"
+parent_name = ""
 save_ERB = False # 200MB each @ 1e6 buffer size
 
-resume_from_termination, load_ERB, reset_steps_count = False, True, True
+resume_from_termination, load_ERB, reset_steps_count = False, False, True
 stage_name = None
 
-trackdata = TrackDataReader.readCSV("./data/old_T10.csv")
+trackdata = TrackDataReader.readCSV("./data/first_corners.csv")
 bStraightline_overload = False
-reward_fun = path_following
+reward_fun = dynamic_reward
+termination_fun = FixedTimeTermination(tlimit0=10.0, deltaOnExceed=+10.0, deltaOnSuccess=-3.0)
 batch_size, gamma, learning_starts = 1024, 0.99, 100
-seed = 42
-ERB_Size = 1e6
+seed = 0
+ERB_Size = 1000000
 
 nepisodes = None
 log_params_freq = None
@@ -72,8 +74,8 @@ car : BicycleModel = GetBaseCar()
 control_freq = 10.0
 odemodel : Environment = Environment(vehicleModel=car, track=track, 
                                     fixed_update=control_freq)
-env = EnvironmentGym(model=odemodel, reward_fun=reward_fun, pdf_interval=pdf_interval, save_path=learning_path)
-env = TimeLimit(env, max_episode_steps=4000)
+env = EnvironmentGym(model=odemodel, reward_fun=reward_fun, pdf_interval=pdf_interval, save_path=learning_path, 
+                     termination_fun=termination_fun)
 
 # Agent
 if resume_from_termination:
@@ -93,7 +95,7 @@ model.verbose = 1
 model.learning_starts = learning_starts
 model.env.reset()
 
-callbacks = callbackset(log_save_path, save_name, log_params_freq, control_freq, eval_save_path, best_save_path, env, eval_steps_freq)
+callbacks = callbackset(log_save_path, save_name, log_params_freq, control_freq, eval_save_path, best_save_path, model.env, eval_steps_freq)
 model.learn(total_timesteps=nepisodes, log_interval=echo_freq, 
             callback=callbacks, reset_num_timesteps=reset_steps_count, 
             tb_log_name=tb_log_name)
