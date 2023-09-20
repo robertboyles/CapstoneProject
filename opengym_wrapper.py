@@ -245,14 +245,14 @@ class EnvironmentGym(gym.Env):
             self.ind_var_ey
         )
 
-        success, terminated, truncated, info_dict = \
-            self._terminationfun.evaluate(dsdt, s, self.model.sfinal, ey, self.lap_steps, self.model.t, self.model.t_limit)
-        self.n_success += success   
-
         lap_time = self._calculate_accurate_laptime_(
             self.model.GetStateTrajectory('s'), 
             self.model.GetTime(), 
             self.model.sfinal)
+        
+        success, terminated, truncated, info_dict = \
+            self._terminationfun.evaluate(dsdt, s, self.model.sfinal, ey, self.lap_steps, lap_time, self.model.t, self.model.t_limit)
+        self.n_success += success   
 
         if s > self.model.sfinal:
             self.minimum_observed_laptime = lap_time    if self.minimum_observed_laptime is None or lap_time <= self.minimum_observed_laptime \
