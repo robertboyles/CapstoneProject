@@ -18,6 +18,15 @@ def dynamic_reward(scalars_dict, reward_weights=_default_reward_weights(), dista
      term_values, names = _reward_default(scalars_dict, mu, reward_weights, distance_trunc)
      return sum(term_values), term_values, names
 
+class DynamicReward():
+     def __init__(self, nSuccesful_total=100) -> None:
+          self.n = nSuccesful_total
+     def __call__(self,scalars_dict, reward_weights=_default_reward_weights(), distance_trunc=True) -> Any:
+          mu = 1.0 - (scalars_dict['n_succ'] / self.n) if scalars_dict['n_succ'] < self.n else 0.0
+          term_values, names = _reward_default(scalars_dict, mu, reward_weights, distance_trunc)
+          return sum(term_values), term_values, names
+          
+
 def _reward_default(modelState, mu, reward_weights, distance_trunc=True
     ) -> float:
     get = lambda name : modelState[name]
