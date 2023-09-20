@@ -11,21 +11,24 @@ import matplotlib.pyplot as plt
 from Rewards import path_following, _default_reward_weights
 import pickle
 import os
+from TerminationFunctions import FixedDisplacementTermination, TerminationHandling
 
 
 class EnvironmentGym(gym.Env):
     reward_lower = -1
     reward_upper = 0.3
     minimum_observed_laptime = None
+    last_observered_laptime = None
 
     def __init__(self, model:Environment, 
-                 reward_fun=path_following, save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
+                 reward_fun=path_following, termination_fun:TerminationHandling=FixedDisplacementTermination(), save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
         self.reward_weights = _default_reward_weights() if reward_weights is None else reward_weights
         self.save_path = save_path
         self.pdf_interval = pdf_interval
         self.render_mode = None
         self.model : Environment = model
         self._rewardfun = reward_fun
+        self._terminationfun : TerminationHandling = termination_fun
         self._initialise_indices()
 
         self.print_next_terminal = False
@@ -50,7 +53,7 @@ class EnvironmentGym(gym.Env):
         )      
     
     def _reward(self, scalars_dict) -> float:
-        total, values, _ = self._rewardfun(scalars_dict, self.reward_weights)
+        total, values, _ = self._rewardfun(scalars_dict, self.reward_weights, distance_trunc=self._terminationfun.IsDistanceTruncation())
         # print(values)
         #scaled = (2 * ((total - (self.reward_lower)) / (self.reward_upper - (self.reward_lower)))) - 1.0
         return total
@@ -230,6 +233,7 @@ class EnvironmentGym(gym.Env):
         self.lap_steps += 1
 
         self.model.step(action[0], action[1])
+        steps_reward = self._reward(self._reward_scalars(action))
 
         dsdt = self.model.GetOutputValue_index(
             self.ind_out_dsdt
@@ -241,38 +245,41 @@ class EnvironmentGym(gym.Env):
             self.ind_var_ey
         )
 
-        steps_reward = self._reward(self._reward_scalars(action))
+        success, terminated, truncated, info_dict = \
+            self._terminationfun.evaluate(dsdt, s, self.model.sfinal, ey, self.lap_steps, self.model.t, self.model.t_limit)
+        self.n_success += success   
 
-        truncated_eol = s > self.model.sfinal
-        truncated_to = (self.model.t > self.model.t_limit)
-        terminated = np.abs(ey) > 5.0 or dsdt < -10.0
-         
-        if terminated:
-            info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
-        elif truncated_eol:
-            info_dict = {"is_success": True, "TimeLimit.truncted": True, "nSteps_time": self.lap_steps}
-            self.n_success += 1
-            lap_time = self.model.t
-            self.minimum_observed_laptime = lap_time if self.minimum_observed_laptime is None or lap_time <= self.minimum_observed_laptime \
-                else self.minimum_observed_laptime
-        elif truncated_to:
-            info_dict = {"is_success": False, "TimeLimit.truncted": True, "nSteps_time": 0}
-        else:
-            info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
-        
+        lap_time = self._calculate_accurate_laptime_(
+            self.model.GetStateTrajectory('s'), 
+            self.model.GetTime(), 
+            self.model.sfinal)
+
+        if s > self.model.sfinal:
+            self.minimum_observed_laptime = lap_time    if self.minimum_observed_laptime is None or lap_time <= self.minimum_observed_laptime \
+                                                        else self.minimum_observed_laptime
+            self.last_observered_laptime = lap_time
+            
         if self.steps_count % self.pdf_interval == 0:
             self.print_next_terminal = True
             
-        if (terminated or truncated_eol or truncated_to) and self.print_next_terminal:
+        if (terminated or truncated) and self.print_next_terminal:
             self.render(None)
             self.print_next_terminal = False
-        
         
         self.previous_slap = s # update for progress after reward calculated
         self.previous_dsdt = dsdt
 
-        return self._state(), steps_reward, terminated, truncated_to or truncated_eol, info_dict
+        return self._state(), steps_reward, terminated, truncated, info_dict
     
+    
+    def _calculate_accurate_laptime_(self, s, t, sfinal):
+        if s[-1] < sfinal:
+            return None
+        elif s[-1] > sfinal:
+            return np.interp(sfinal, s, t)
+        else:
+            return t[-1]
+
     def _reward_scalars(self, action):
         
         s1 = self.previous_slap

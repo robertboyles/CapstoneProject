@@ -5,20 +5,20 @@ import numpy as np
 def _default_reward_weights():
      return [0.5, 0.01, 2e-5, 2e-5, 0.001, 1e-4, 1e-4, 0.1]
 
-def path_finding(scalars_dict, reward_weights=_default_reward_weights()) -> float:
-    term_values, names = _reward_default(scalars_dict, 0.0, reward_weights)
+def path_finding(scalars_dict, reward_weights=_default_reward_weights(), distance_trunc=True) -> float:
+    term_values, names = _reward_default(scalars_dict, 0.0, reward_weights, distance_trunc)
     return sum(term_values), term_values, names
 
-def path_following(scalars_dict, reward_weights=_default_reward_weights()):
-     term_values, names = _reward_default(scalars_dict, 1.0, reward_weights)
+def path_following(scalars_dict, reward_weights=_default_reward_weights(), distance_trunc=True):
+     term_values, names = _reward_default(scalars_dict, 1.0, reward_weights, distance_trunc)
      return sum(term_values), term_values, names
 
-def dynamic_reward(scalars_dict, reward_weights=_default_reward_weights()):
+def dynamic_reward(scalars_dict, reward_weights=_default_reward_weights(), distance_trunc=True):
      mu = 1.0 - (scalars_dict['n_succ'] / 100.0) if scalars_dict['n_succ'] < 100 else 0.0
-     term_values, names = _reward_default(scalars_dict, mu, reward_weights)
+     term_values, names = _reward_default(scalars_dict, mu, reward_weights, distance_trunc)
      return sum(term_values), term_values, names
 
-def _reward_default(modelState, mu, reward_weights
+def _reward_default(modelState, mu, reward_weights, distance_trunc=True
     ) -> float:
     get = lambda name : modelState[name]
     W = reward_weights
@@ -28,7 +28,7 @@ def _reward_default(modelState, mu, reward_weights
     bout_of_bounds = lout_of_bounds > 0.0
 
     return (
-           course_progress(W[0], get('s1'), get('s2'), bout_of_bounds, get('dsdt'), get('time')),
+           course_progress(W[0], get('s1'), get('s2'), bout_of_bounds, get('dsdt'), get('time'), distance_trunc),
            boundary(W[1], mu, lout_of_bounds, get('yError')),
            slip_general(W[2], get('kappaf'), 0.1),
            slip_general(W[3], get('kappar'), 0.1),
@@ -44,7 +44,7 @@ def reward_term_names():
           'combined', 'throttle_control_reg', 'steering_control_reg', 'too_slow'
      )
   
-def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time):
+def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time, distance_trunc):
      #    ref_speed = 5 # m/s
      #    T = 1/10.0
      #    minimum_distance = ref_speed * T
@@ -57,20 +57,22 @@ def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time):
      #    value = (((value - (min_)) / (max_ - min_)))
      #dsdt_max = 100
      #delta_s = (s2 -s1) * (((dsdt + dsdt_prev) / 2) / dsdt_max)**6
-     
-     if time == 0.0:
-          average_speed = 0.0
+     if distance_trunc:
+          if time == 0.0:
+               average_speed = 0.0
+          else:
+               average_speed = s2 / time
+          av_speed_sq = average_speed
+          max_, min_ = 80.0, 0.0
+          value = (av_speed_sq - min_) / (max_ - min_)
      else:
-          average_speed = s2 / time
-
-     av_speed_sq = average_speed
-
-     max_, min_ = 80.0, 0.0
-     value = (av_speed_sq - min_) / (max_ - min_)
-
-     # print('time %.2f \t distance %.2f \t speed %.2f \t reward %.2f' % (time, s2, average_speed, scale * value))
-
+          # Time truncation
+          value = np.max([(s2 - s1), 0.0])
+          max_, min_ = 10.0, 0.0
+          value = (value - min_) / (max_ - min_)
+     
      return (1 - bout_of_bounds) * scale * value
+     
 
 def boundary(scale, mu, lout_of_bounds, yError):
      # barrier parameter mu, as mu -> 0, we approach path finding
