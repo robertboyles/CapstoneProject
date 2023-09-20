@@ -21,7 +21,14 @@ class EnvironmentGym(gym.Env):
     last_observered_laptime = None
 
     def __init__(self, model:Environment, 
-                 reward_fun=path_following, termination_fun:TerminationHandling=FixedDisplacementTermination(), save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
+                 reward_fun=path_following, 
+                 termination_fun:TerminationHandling=FixedDisplacementTermination(), 
+                 save_path='./plots/unnamed', 
+                 pdf_interval=2000, 
+                 reward_weights=None,
+                 terminal_reward_value=0.0) -> None:
+        
+        self.terminal_reward = terminal_reward_value
         self.reward_weights = _default_reward_weights() if reward_weights is None else reward_weights
         self.save_path = save_path
         self.pdf_interval = pdf_interval
@@ -268,6 +275,9 @@ class EnvironmentGym(gym.Env):
         
         self.previous_slap = s # update for progress after reward calculated
         self.previous_dsdt = dsdt
+
+        if terminated:
+            steps_reward += self.terminal_reward
 
         return self._state(), steps_reward, terminated, truncated, info_dict
     

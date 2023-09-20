@@ -3,7 +3,7 @@ import gymnasium  as gym
 import numpy as np
 
 def _default_reward_weights():
-     return [0.5, 0.01, 2e-5, 2e-5, 0.001, 1e-4, 1e-4, 0.1]
+     return [5, 0.01, 2e-5, 2e-5, 0.001, 1e-4, 1e-4, 0.1]
 
 def path_finding(scalars_dict, reward_weights=_default_reward_weights(), distance_trunc=True) -> float:
     term_values, names = _reward_default(scalars_dict, 0.0, reward_weights, distance_trunc)
@@ -78,7 +78,7 @@ def course_progress(scale, s1, s2, bout_of_bounds, dsdt, time, distance_trunc):
           # Time truncation
           value = np.max([(s2 - s1), 0.0])
           max_, min_ = 10.0, 0.0
-          value = (value - min_) / (max_ - min_)
+          value = 0.8 * (value - min_) / (max_ - min_)
      
      return (1 - bout_of_bounds) * scale * value
      

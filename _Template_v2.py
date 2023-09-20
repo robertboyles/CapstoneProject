@@ -20,11 +20,18 @@ from TerminationFunctions import *
 from custom_callbacks import callbackset
 from BaselineModels import GetBaseCar_v1_0 as GetBaseCar, GetBaseTrack_v1_0 as GetBaseTrack
 import os
+from Rewards import _default_reward_weights
 
 raise NotImplementedError
 
 parent_name = ""
 save_ERB = False # 200MB each @ 1e6 buffer size
+
+terminal_reward = 0.0
+_W_reward = _default_reward_weights()
+
+policy_kwargs = None
+#policy_kwargs = dict(net_arch=dict(qf=[1024, 1024], pi=[1024, 1024]))
 
 resume_from_termination, load_ERB, reset_steps_count = False, False, True
 stage_name = None
@@ -75,7 +82,8 @@ control_freq = 10.0
 odemodel : Environment = Environment(vehicleModel=car, track=track, 
                                     fixed_update=control_freq)
 env = EnvironmentGym(model=odemodel, reward_fun=reward_fun, pdf_interval=pdf_interval, save_path=learning_path, 
-                     termination_fun=termination_fun)
+                     termination_fun=termination_fun, reward_weights=_W_reward,
+                     terminal_reward_value=terminal_reward)
 
 # Agent
 if resume_from_termination:
@@ -84,7 +92,7 @@ if resume_from_termination:
         model.load_replay_buffer(os.path.join(terminal_path, parent_name + '_ERB.pkl'))
     tb_log_name = stage_name
 else:
-    model : SAC = SAC(MlpPolicy, env, seed=seed, buffer_size=ERB_Size)
+    model : SAC = SAC(MlpPolicy, env, seed=seed, buffer_size=ERB_Size, policy_kwargs=policy_kwargs)
     tb_log_name = 'parent'
 
 # Learn

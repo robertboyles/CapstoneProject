@@ -10,6 +10,7 @@ from read_track_data import TrackDataReader
 from Rewards import *
 from custom_callbacks import callbackset
 from BaselineModels import GetBaseCar_v1_0 as GetBaseCar, GetBaseTrack_v1_0 as GetBaseTrack
+from TerminationFunctions import *
 import time
 import matplotlib.pyplot as plt
 
@@ -17,7 +18,7 @@ import os
 
 trackdata = TrackDataReader.readCSV("./data/first_corners.csv")
 bStraightline_overload = False
-reward_fun = path_finding
+reward_fun = path_following
 
 # Track data
 track : TrackDefinition = GetBaseTrack(trackdata)
@@ -55,8 +56,9 @@ env.render(mode=None)
 
 r1 = np.array(reward_history)
 
-
-agent = SAC.load('/home/rboyles/CapstoneProject/CapstoneProject/terminal_models/dynamic_2.zip', env=env)
+env=EnvironmentGym(model=odemodel, reward_fun=reward_fun, pdf_interval=1000000,
+                           termination_fun=FixedTimeTermination(tlimit0=27.09, deltaOnExceed=+10.0, deltaOnSuccess=-3.0))
+agent = SAC.load('/home/rboyles/CapstoneProject/CapstoneProject/best_models/dynamic_2/best_model.zip', env=env)
 
 obs, _ = env.reset()
 env.steps_count = 0
