@@ -16,6 +16,7 @@ import os
 class EnvironmentGym(gym.Env):
     reward_lower = -1
     reward_upper = 0.3
+    minimum_observed_laptime = None
 
     def __init__(self, model:Environment, 
                  reward_fun=path_following, save_path='./plots/unnamed', pdf_interval=2000, reward_weights=None) -> None:
@@ -242,22 +243,27 @@ class EnvironmentGym(gym.Env):
 
         steps_reward = self._reward(self._reward_scalars(action))
 
-        terminated = s > self.model.sfinal
-        truncated = (np.abs(ey) > 5.0 or # (10.0 * width * 0.5)  ## This fixed value of 5 helps keep ey*ey*ey*ey in rewards low, otherwise wider tracks cause convergence issues
-                     self.model.t > self.model.t_limit) or dsdt < -10.0
-        
-        if truncated:
+        truncated_eol = s > self.model.sfinal
+        truncated_to = (self.model.t > self.model.t_limit)
+        terminated = np.abs(ey) > 5.0 or dsdt < -10.0
+         
+        if terminated:
             info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
-        elif terminated:
-            info_dict = {"is_success": True, "TimeLimit.truncted": False, "nSteps_time": self.lap_steps}
+        elif truncated_eol:
+            info_dict = {"is_success": True, "TimeLimit.truncted": True, "nSteps_time": self.lap_steps}
             self.n_success += 1
+            lap_time = self.model.t
+            self.minimum_observed_laptime = lap_time if self.minimum_observed_laptime is None or lap_time <= self.minimum_observed_laptime \
+                else self.minimum_observed_laptime
+        elif truncated_to:
+            info_dict = {"is_success": False, "TimeLimit.truncted": True, "nSteps_time": 0}
         else:
             info_dict = {"is_success": False, "TimeLimit.truncted": False, "nSteps_time": 0}
         
         if self.steps_count % self.pdf_interval == 0:
             self.print_next_terminal = True
             
-        if (terminated or truncated) and self.print_next_terminal:
+        if (terminated or truncated_eol or truncated_to) and self.print_next_terminal:
             self.render(None)
             self.print_next_terminal = False
         
@@ -265,7 +271,7 @@ class EnvironmentGym(gym.Env):
         self.previous_slap = s # update for progress after reward calculated
         self.previous_dsdt = dsdt
 
-        return self._state(), steps_reward, terminated or truncated, False, info_dict
+        return self._state(), steps_reward, terminated, truncated_to or truncated_eol, info_dict
     
     def _reward_scalars(self, action):
         

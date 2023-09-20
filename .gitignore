@@ -8,6 +8,8 @@ evaluations/
 best_models/
 local tasks/
 terminal_models/
+model_compare/
+*.pdf
 
 # C extensions
 *.so
