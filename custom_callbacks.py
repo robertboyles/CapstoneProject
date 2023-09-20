@@ -31,7 +31,7 @@ class MinimumLapTimeSave(BaseCallback):
         if env_best is not None and env_best <= self.best_lap_time \
             and self.parent.best_model_save_path is not None:
             print('Saving best lap time model. Time : %.4f' % env_best)
-            self.model.save(os.path.join(self.parent.best_model_save_path, "best_laptime"))
+            self.model.save(os.path.join(self.parent.best_model_save_path, "best_laptime_" + self.num_timesteps.__str__()))
             
 
 
