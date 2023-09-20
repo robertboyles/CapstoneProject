@@ -67,7 +67,7 @@ class FixedTimeTermination(TerminationHandling):
        
     
     def _on_success_(self, t) -> None:
-        if t < self.current_limit + (2 * self.on_hit):
+        if t < (self.current_limit + (2 * self.on_success)):
             if self.verbose:
                 print('--- Decreasing Time Limit : %.2f  -%.2fs ---' % (self.current_limit, self.on_success))
             self.current_limit += self.on_success
