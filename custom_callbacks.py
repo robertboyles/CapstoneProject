@@ -51,15 +51,18 @@ class MinimumLapTimeSave(BaseCallback):
         self.best_lap_time = 1000000.0
     def _on_step(self) -> None:
         
-        env_best, disp_best, _, disp_last = self.get_metrics()
+        env_best, disp_best, env_last, disp_last = self.get_metrics()
 
-        self.parent.logger.record("eval/lap_time_last", disp_last)
+        self.parent.logger.record("eval/lap_time_recorded", disp_last)
         self.parent.logger.record("eval/lap_time_best", disp_best)
 
-        if env_best is not None and env_best < self.best_lap_time \
+        if env_last is not None and \
+            env_best is not None and \
+            env_last < self.best_lap_time \
             and self.parent.best_model_save_path is not None:
-            print('Saving best lap time model. Time : %.4f' % env_best)
+            print('Saving best lap time model. Time : %.4f' % env_last)
             self.model.save(os.path.join(self.parent.best_model_save_path, "best_laptime"))
+            self.best_lap_time = env_last
     
     def get_metrics(self):
         env_best = self.model.env.envs[0].unwrapped.minimum_observed_laptime
