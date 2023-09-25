@@ -10,6 +10,7 @@ local tasks/
 terminal_models/
 model_compare/
 *.pdf
+temp_transfer/Baseline_FT3_Tn_Converged/Baseline_FT3_Tn2M_Extension_2M_Extension_ERB.pkl
 
 # C extensions
 *.so
